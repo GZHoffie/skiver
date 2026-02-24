@@ -100,7 +100,7 @@ pub fn is_fastx_file(file_path: &str) -> bool {
     // Check if a file is in FASTA or FASTQ format based on its extension
     let lower_path = file_path.to_lowercase();
     let fastx_extensions = [".fa", ".fna", ".fasta", ".fa.gz", ".fna.gz", ".fasta.gz",
-                            ".fq", ".fnq", ".fastq", ".fq.gz", ".fnq.gz", ".fastq.gz"];
+                            ".fq", ".fnq", ".fastq", ".fq.gz", ".fnq.gz", ".fastq.gz", ".bam"];
     fastx_extensions.iter().any(|ext| lower_path.ends_with(ext))
 }
 

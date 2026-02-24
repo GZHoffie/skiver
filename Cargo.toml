@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 needletail = "0.5.0"
+rust-htslib = "0.44"
 log = { version = "0.4", features = ["max_level_debug", "release_max_level_info"] }
 simple_logger=  { version = "3", features = ["stderr"] }
 glob = "0.3.2"

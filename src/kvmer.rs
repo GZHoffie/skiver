@@ -1,5 +1,6 @@
 use log::{info, warn, error};
 use needletail::parse_fastx_file;
+use rust_htslib::{bam, bam::Read as BamRead}; // Added rust-htslib
 use serde::{Serialize, Deserialize};
 //use rayon::prelude::*;
 
@@ -47,7 +48,6 @@ impl KVmerSet {
             bidirectional,
         }
     }
-  
 
 
     pub fn to_value_string(&self, kmer: u64) -> String {
@@ -77,7 +77,7 @@ impl KVmerSet {
     pub fn homopolymer_length(&self, key: u64, value: u64) -> u32 {
         let mut longest_homopolymer: u32 = 1;
         let mut current_homopolymer: u32 = 1;
-        
+
         // Find the longest homopolymer at the end of the key
         let mut last_base = key & 0b11;
         for i in 1..self.key_size {
@@ -147,37 +147,57 @@ impl KVmerSet {
         }
     }
 
-    
+    // MODIFIED: Added BAM/SAM support
     pub fn add_file_to_kvmer_set(
         &mut self,
         seq_file: &str,
         c: usize,
         trim_front: usize,
         trim_back: usize,
-    ) { 
-        
+    ) {
         let seq_file_clone = seq_file.to_string();
-        let reader = parse_fastx_file(&seq_file_clone);
-        if !reader.is_ok() {
-            error!("{} is not a valid fasta/fastq file; skipping.", seq_file_clone);
-            return;
-        }
-        let mut reader = reader.unwrap();
-        while let Some(record) = reader.next() {
-            match record {
-                Ok(record) => {
-                    let mut key_vec: Vec<u64> = Vec::new();
-                    let mut value_vec: Vec<u64> = Vec::new();
-                    self.extract_markers_masked(&record.seq(), &mut key_vec, &mut value_vec, c, trim_front, trim_back);
-                    //println!("Extracted {} kv-mers from a read of length {}", key_vec.len(), record.seq().len());
-                    self.add_kv_vector(&key_vec, &value_vec);
+
+        if seq_file_clone.ends_with(".bam") || seq_file_clone.ends_with(".sam") {
+            match bam::Reader::from_path(&seq_file_clone) {
+                Ok(mut reader) => {
+                    if !self.bidirectional {
+                        // [FIXME] Correct the coverage estimation when using forward strand only with BAM/SAM input files
+                        warn!("Using --forward-only with BAM/SAM input files may make the estimation of true coverage inaccurate.")
+                    }
+                    for record_result in reader.records() {
+                        match record_result {
+                            Ok(record) => {
+                                let seq = record.seq().as_bytes();
+                                let mut key_vec: Vec<u64> = Vec::new();
+                                let mut value_vec: Vec<u64> = Vec::new();
+                                self.extract_markers_masked(&seq, &mut key_vec, &mut value_vec, c, trim_front, trim_back);
+                                self.add_kv_vector(&key_vec, &value_vec);
+                            }
+                            Err(e) => warn!("Error reading BAM/SAM record: {}", e),
+                        }
+                    }
                 }
-                Err(e) => {
-                    warn!("Error reading record: {}", e);
+                Err(e) => error!("{} is not a valid BAM/SAM file (Error: {}); skipping.", seq_file_clone, e),
+            }
+        } else {
+            let reader = parse_fastx_file(&seq_file_clone);
+            if !reader.is_ok() {
+                error!("{} is not a valid fasta/fastq file; skipping.", seq_file_clone);
+                return;
+            }
+            let mut reader = reader.unwrap();
+            while let Some(record) = reader.next() {
+                match record {
+                    Ok(record) => {
+                        let mut key_vec: Vec<u64> = Vec::new();
+                        let mut value_vec: Vec<u64> = Vec::new();
+                        self.extract_markers_masked(&record.seq(), &mut key_vec, &mut value_vec, c, trim_front, trim_back);
+                        self.add_kv_vector(&key_vec, &value_vec);
+                    }
+                    Err(e) => warn!("Error reading record: {}", e),
                 }
             }
         }
-
     }
 
     pub fn containment_index(&self, other: &KVmerSet) -> (f64, f64) {
@@ -196,7 +216,7 @@ impl KVmerSet {
                         shared_key_values += 1;
                     }
                 }
-            } 
+            }
             total_key_values += value_map.len();
         }
 
@@ -219,7 +239,7 @@ impl KVmerSet {
      * Find the number of one-edit neighbors of the consensus value[0:v].
      * [FIXME] Optimize this function.
      */
-    fn _num_consensus_up_to_v(&self, consensus: u64, v: u8, _bidirectional: bool, value_map: &HashMap<u64, u32>) -> u32 {        
+    fn _num_consensus_up_to_v(&self, consensus: u64, v: u8, _bidirectional: bool, value_map: &HashMap<u64, u32>) -> u32 {
         let consensus_up_to_v = consensus >> ((self.value_size - v) * 2);
 
         let mut num_consensus: u32 = 0;
@@ -252,8 +272,8 @@ impl KVmerSet {
         let mut neighbor_counts: Vec<u32> = Vec::new();
 
         for (key, value_map) in &self.key_value_map {
-            
-            
+
+
 
             let mut max_count = 0;
             let mut sum_count = 0;
@@ -292,7 +312,7 @@ impl KVmerSet {
                 consensus_up_to_v_counts[(v - MIN_VALUE_FOR_ERROR_ESTIMATION) as usize].push(consensus_up_to_v);
             }
 
-        
+
             let mut num_neighbors = 0;
             //println!("Neighbors of {}: {:?}", max_value, neighbors);
             //println!("Analyzing key: {}, consensus value: {}", self.to_key_string(*key), self.to_value_string(max_value));
@@ -300,7 +320,7 @@ impl KVmerSet {
                 if *value != max_value && neighbors.contains_key(value) {
                     let (op, prev_base, next_base) = neighbors.get(value).unwrap();
                     //println!("Value: {}, Operation: {:?}, Position: {}", self.to_value_string(*value), op, pos);
-                    
+
                     // update the error count map
                     let entry = error_count_map.entry((*op, *prev_base, *next_base)).or_insert(0);
                     *entry += *count;
@@ -355,7 +375,7 @@ impl KVmerSet {
         let mut shared_kmer_count: u32 = 0;
 
         for (key, ref_value_map) in &reference.key_value_map {
-            
+
             if !self.key_value_map.contains_key(&key) {
                 continue;
             }
@@ -392,7 +412,7 @@ impl KVmerSet {
                 continue;
             }
 
-            
+
 
             // Find the count of error types at v=self.value_size
             let mut error_count_map: HashMap<(EditOperation, u8, u8), u32> = HashMap::new();
@@ -408,13 +428,13 @@ impl KVmerSet {
                 consensus_up_to_v_counts[(v - 1) as usize].push(consensus_up_to_v);
             }
 
-        
+
             let mut num_neighbors = 0;
             for (value, count) in value_map {
                 if *value != consensus_value && neighbors.contains_key(value) {
                     let (op, prev_base, next_base) = neighbors.get(value).unwrap();
                     //println!("Value: {}, Operation: {:?}, Position: {}", self.to_value_string(*value), op, pos);
-                    
+
                     // update the error count map
                     let entry = error_count_map.entry((*op, *prev_base, *next_base)).or_insert(0);
                     *entry += *count;
@@ -567,13 +587,13 @@ impl VmerSet {
 
     pub fn _get_neighbors(&self, value: u64) -> HashMap<u64, EditOperation> {
         // get all the values with edit distance 1 from the input value
-        
+
         let mut neighbors: HashMap<u64, EditOperation> = HashMap::new();
         let bases = [0, 1, 2, 3]; // A, C, G, T
 
         for i in 0..self.value_size {
             let shift = i * 2;
-            
+
             // Substitutions
             for &b in &bases {
                 let current_base = (value >> shift) & 0b11;
@@ -588,7 +608,7 @@ impl VmerSet {
                 if shift == 0 && b == (value >> shift) & 0b11 {
                     continue; // skip the original base for the first position
                 }
-                
+
                 let left_part = (value >> (shift + 2)) << ((shift + 2));
                 let right_part = value & ((1 << (shift + 2)) - 1);
                 let neighbor_insert = left_part | (b << shift) | (right_part >> 2);
@@ -634,61 +654,91 @@ impl VmerSet {
         relevant_values
     }
 
-    
-
-
+    // MODIFIED: Added BAM/SAM support
     pub fn add_file_first_pass(
         &mut self,
         seq_file: &str,
         c: usize,
     ) {
-        let reader = parse_fastx_file(&seq_file);
-        //println!("Reading file: {}", seq_file);
-        if !reader.is_ok() {
-            //println!("Not OK Reading file: {}", seq_file);
-            println!("{} is not a valid fasta/fastq file; skipping.", seq_file);
-        } else {
-            //println!("Reading file: {}", seq_file);
-            let mut reader = reader.unwrap();
-            while let Some(record) = reader.next() {
-                match record {
-                    Ok(record) => {
-                        let seq = record.seq();
-                        let mut kmer_vec: Vec<u64> = Vec::new();
-                        let mut _value_vec: Vec<u64> = Vec::new();
-                        fmh_seeds_masked(seq.as_ref(), &mut kmer_vec, &mut _value_vec, c, self.value_size as usize, 0 as usize, self.kvmer_set.bidirectional);
-                        self.add_to_keys(&kmer_vec);
+        let seq_file_clone = seq_file.to_string();
+
+        if seq_file_clone.ends_with(".bam") || seq_file_clone.ends_with(".sam") {
+            match bam::Reader::from_path(&seq_file_clone) {
+                Ok(mut reader) => {
+                    for record_result in reader.records() {
+                        match record_result {
+                            Ok(record) => {
+                                let seq = record.seq().as_bytes();
+                                let mut kmer_vec: Vec<u64> = Vec::new();
+                                let mut _value_vec: Vec<u64> = Vec::new();
+                                fmh_seeds_masked(&seq, &mut kmer_vec, &mut _value_vec, c, self.value_size as usize, 0 as usize, self.kvmer_set.bidirectional);
+                                self.add_to_keys(&kmer_vec);
+                            }
+                            Err(e) => warn!("Error reading BAM/SAM record: {}", e),
+                        }
                     }
-                    Err(e) => {
-                        warn!("Error reading record: {}", e);
+                }
+                Err(e) => error!("{} is not a valid BAM/SAM file (Error: {}); skipping.", seq_file_clone, e),
+            }
+        } else {
+            let reader = parse_fastx_file(&seq_file_clone);
+            if !reader.is_ok() {
+                println!("{} is not a valid fasta/fastq file; skipping.", seq_file_clone);
+            } else {
+                let mut reader = reader.unwrap();
+                while let Some(record) = reader.next() {
+                    match record {
+                        Ok(record) => {
+                            let seq = record.seq();
+                            let mut kmer_vec: Vec<u64> = Vec::new();
+                            let mut _value_vec: Vec<u64> = Vec::new();
+                            fmh_seeds_masked(seq.as_ref(), &mut kmer_vec, &mut _value_vec, c, self.value_size as usize, 0 as usize, self.kvmer_set.bidirectional);
+                            self.add_to_keys(&kmer_vec);
+                        }
+                        Err(e) => warn!("Error reading record: {}", e),
                     }
                 }
             }
         }
     }
 
+    // MODIFIED: Added BAM/SAM support
     pub fn add_file_second_pass(
         &mut self,
         seq_file: &str,
         value_count: &mut HashMap<u64, u32>,
         relevant_values: &HashSet<u64>,
     ) {
-        let reader = parse_fastx_file(&seq_file);
-        //println!("Reading file: {}", seq_file);
-        if !reader.is_ok() {
-            //println!("Not OK Reading file: {}", seq_file);
-            println!("{} is not a valid fasta/fastq file; skipping.", seq_file);
-        } else {
-            //println!("Reading file: {}", seq_file);
-            let mut reader = reader.unwrap();
-            while let Some(record) = reader.next() {
-                match record {
-                    Ok(record) => {
-                        let seq = record.seq();
-                        count_seeds_in_set(seq.as_ref(), self.value_size as usize, value_count, relevant_values, self.kvmer_set.bidirectional);
+        let seq_file_clone = seq_file.to_string();
+
+        if seq_file_clone.ends_with(".bam") || seq_file_clone.ends_with(".sam") {
+            match bam::Reader::from_path(&seq_file_clone) {
+                Ok(mut reader) => {
+                    for record_result in reader.records() {
+                        match record_result {
+                            Ok(record) => {
+                                let seq = record.seq().as_bytes();
+                                count_seeds_in_set(&seq, self.value_size as usize, value_count, relevant_values, self.kvmer_set.bidirectional);
+                            }
+                            Err(e) => warn!("Error reading BAM/SAM record: {}", e),
+                        }
                     }
-                    Err(e) => {
-                        warn!("Error reading record: {}", e);
+                }
+                Err(e) => error!("{} is not a valid BAM/SAM file (Error: {}); skipping.", seq_file_clone, e),
+            }
+        } else {
+            let reader = parse_fastx_file(&seq_file_clone);
+            if !reader.is_ok() {
+                println!("{} is not a valid fasta/fastq file; skipping.", seq_file_clone);
+            } else {
+                let mut reader = reader.unwrap();
+                while let Some(record) = reader.next() {
+                    match record {
+                        Ok(record) => {
+                            let seq = record.seq();
+                            count_seeds_in_set(seq.as_ref(), self.value_size as usize, value_count, relevant_values, self.kvmer_set.bidirectional);
+                        }
+                        Err(e) => warn!("Error reading record: {}", e),
                     }
                 }
             }
@@ -733,8 +783,5 @@ impl VmerSet {
     pub fn get_stats(&self, threshold: u32) -> KVmerStats {
         self.kvmer_set.get_stats(threshold)
     }
-
-    
-
 
 }
