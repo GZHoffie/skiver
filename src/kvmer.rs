@@ -168,6 +168,10 @@ impl KVmerSet {
                                 let mut value_vec: Vec<u64> = Vec::new();
                                 self.extract_markers_masked(&seq, &mut key_vec, &mut value_vec, c, trim_front, trim_back);
                                 self.add_kv_vector(&key_vec, &value_vec);
+                                if !self.bidirectional {
+                                    // [FIXME] Correct the coverage estimation when using forward strand only with BAM/SAM input files
+                                    warn!("Using forward strand only with BAM/SAM input files may double the estimation of true coverage.")
+                                }
                             }
                             Err(e) => warn!("Error reading BAM/SAM record: {}", e),
                         }
@@ -595,16 +599,7 @@ impl VmerSet {
                 let current_base = (value >> shift) & 0b11;
                 if b != current_base {
                     let neighbor = (value & !(0b11 << shift)) | (b << shift);
-<<<<<<< master
-                    if self.kvmer_set.bidirectional {
-                        neighbors.insert(neighbor, BASES_TO_SUBSTITUTION_CANONICAL[current_base as usize][b as usize].unwrap());
-                    } else {
-                        neighbors.insert(neighbor, BASES_TO_SUBSTITUTION[current_base as usize][b as usize].unwrap());
-                    }
-
-=======
                     neighbors.insert(neighbor, BASES_TO_SUBSTITUTION[current_base as usize][b as usize].unwrap());
->>>>>>> master
                 }
             }
 
@@ -624,35 +619,11 @@ impl VmerSet {
                         }
                     )
                     .or_insert(BASES_TO_INSERTION[b as usize].unwrap());
-<<<<<<< master
-                }
-
-
-
-                let right_part = value & ((1 << shift) - 1);
-                let neighbor_delete = left_part | (right_part << 2) | b;
-                let original_base = (value >> shift) & 0b11;
-                if self.kvmer_set.bidirectional {
-                    neighbors.entry(neighbor_delete)
-                    .and_modify(|op|
-                        if *op != BASES_TO_DELETION_CANONICAL[original_base as usize].unwrap() {
-                            *op = EditOperation::AMBIGUOUS
-                        }
-                    )
-                    .or_insert(BASES_TO_DELETION_CANONICAL[original_base as usize].unwrap());
-                } else {
-                    neighbors.entry(neighbor_delete)
-                    .and_modify(|op|
-=======
-                
-                
-                
                 let right_part = value & ((1 << shift) - 1);
                 let neighbor_delete = left_part | (right_part << 2) | b;
                 let original_base = (value >> shift) & 0b11;
                 neighbors.entry(neighbor_delete)
-                    .and_modify(|op| 
->>>>>>> master
+                    .and_modify(|op|
                         if *op != BASES_TO_DELETION[original_base as usize].unwrap() {
                             *op = EditOperation::AMBIGUOUS
                         }
