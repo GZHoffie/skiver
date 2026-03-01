@@ -41,7 +41,7 @@ def plot_sbs96_spectrum(data_file, output_file):
     # Plotting parameters (same style as canonical)
     bar_width = 0.1
     group_width = bar_width * 16
-    fig_size = (6, 3) if canonical else (6, 4)
+    fig_size = (6, 3) if canonical else (6, 5)
 
     
 
@@ -135,17 +135,17 @@ def plot_sbs96_spectrum(data_file, output_file):
         # shared label
         fig.text(0.02, 0.5, "Frequency", va="center", rotation="vertical")
         plt.tight_layout()
-        fig.subplots_adjust(left=0.12)
-        plt.savefig(output_file, dpi=300, bbox_inches="tight")
-        plt.show()
+        fig.subplots_adjust(left=0.16)
+        plt.savefig(output_file)
         plt.close()
 
 
 if __name__ == "__main__":
-    data_file = 'sarscov.csv'  # Input CSV file with SBS96 data
-    #data_file = 'mers.csv'
-    #data_file = 'output.csv'
-    #data_file = 'sbs96_spectrum.csv'  # Input CSV file with SBS96 data
-    output_file = 'sbs96_spectrum.png'  # Output plot file
-    plot_sbs96_spectrum(data_file, output_file)
+    import argparse
+    parser = argparse.ArgumentParser(description="Plot the SBS spectrum from Skiver report.")
+    parser.add_argument("skiver_report_file", help="Path to the Skiver report CSV file.")
+    parser.add_argument("output_file", help="Path to save the output plot image.")
+
+    args = parser.parse_args()
+    plot_sbs96_spectrum(args.skiver_report_file, args.output_file)
     

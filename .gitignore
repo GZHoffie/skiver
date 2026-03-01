@@ -8,3 +8,4 @@ test.sh
 *.log
 *.out
 *.ipynb
+*.fastq.gz
