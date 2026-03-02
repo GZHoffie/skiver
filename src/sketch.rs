@@ -9,6 +9,25 @@ use crate::cmdline::SketchArgs;
 
 pub fn sketch(args: SketchArgs) {
     SimpleLogger::new().with_level(log::LevelFilter::Info).init().unwrap();
+
+    // check if the output file is valid
+    if args.output_path.is_empty() {
+        panic!("Output file path is empty.");
+    }
+    let output = std::path::Path::new(&args.output_path);
+    let parent = output.parent().unwrap_or(std::path::Path::new("."));
+    if !parent.exists() {
+        panic!("Output directory '{}' does not exist.", parent.display());
+    }
+    // verify we can actually create/write the output file before doing any work
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(output)
+        .unwrap_or_else(|e| panic!("Cannot write to output path '{}': {}", args.output_path, e));
+    std::fs::remove_file(output).ok();
+
     //rayon::ThreadPoolBuilder::new().num_threads(args.threads).build_global().unwrap();
     info!("Processing query files...");
     

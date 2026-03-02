@@ -43,15 +43,17 @@ pub fn analyze(args: AnalyzeArgs) {
     
     let stats: KVmerStats;
     if let Some(reference) = &args.reference {
+        let lower_bound = args.lower_bound.unwrap_or(0);
 
         let mut reference_kvmer_set = KVmerSet::new(args.k, args.v, true);
         reference_kvmer_set.add_file_to_kvmer_set(reference, args.c, args.trim_front, args.trim_back);
         info!("Loaded reference file: {}", reference);
 
-        stats = kvmer_set.get_stats_with_reference(args.lower_bound, &reference_kvmer_set);
+        stats = kvmer_set.get_stats_with_reference(lower_bound, &reference_kvmer_set);
     } else {
+        let lower_bound = args.lower_bound.unwrap_or(10);
         //println!("Error rate: {}", kvmer_set.get_stats(args.threshold));
-        stats = kvmer_set.get_stats(args.lower_bound);
+        stats = kvmer_set.get_stats(lower_bound);
     }
     if let Some(output_path) = &args.output_path {
         kvmer_set.output_stats(output_path, &stats, true, true);
