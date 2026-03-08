@@ -89,6 +89,18 @@ skiver analyze ERR3152366.kvmer --hazard-rate hazard_rate.csv -o verbose_output.
 
 Here, `hazard_rate.csv` contains the estimated hazard rate over a range of `t`, `verbose_output.csv` contains the key and the consensus values of the sketched (k,v)-mers (mainly for debugging), and `skiver_report.csv` contains the estimated error rates/spectra.
 
+- **Visualizing hazard rate and survival rate estimates**
+
+  ```bash
+  python ./scripts/plot_hazard_survival_rate.py hazard_rate.csv skiver_report.csv figures/hazard_survival_rate.png -t 1 -T 100 > survival_rate_estimates.csv
+  ```
+
+  This command outputs the plot `hazard_survival_rate.png`, along with the estimated survival rates in `survival_rate_estimates.csv`, with the range of `t` specified using `-t` and `-T`.
+
+  <p align="center">
+    <img src="./figures/hazard_survival_rate.png"/>
+  </p>
+
 - **Visualizing error spectrum**
 
   ```bash
