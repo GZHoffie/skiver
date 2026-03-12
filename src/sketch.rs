@@ -2,7 +2,7 @@
 
 use crate::kvmer::*;
 use simple_logger::SimpleLogger;
-use log::info;
+use log::{info, error};
 use crate::cmdline::SketchArgs;
 //use rayon::prelude::*;
 
@@ -12,13 +12,10 @@ pub fn sketch(args: SketchArgs) {
 
     // check if the output file is valid
     if args.output_path.is_empty() {
-        panic!("Output file path is empty.");
+        error!("Output file path is empty.");
+        return;
     }
     let output = std::path::Path::new(&args.output_path);
-    let parent = output.parent().unwrap_or(std::path::Path::new("."));
-    if !parent.exists() {
-        panic!("Output directory '{}' does not exist.", parent.display());
-    }
     // verify we can actually create/write the output file before doing any work
     std::fs::OpenOptions::new()
         .write(true)

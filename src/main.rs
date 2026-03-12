@@ -3,6 +3,7 @@ use clap::Parser;
 
 use skiver::cmdline::*;
 use skiver::analyze;
+use skiver::calibrate;
 use skiver::sketch;
 use skiver::mapping;
 
@@ -28,6 +29,7 @@ fn main() {
     match cli.mode {
         Mode::Sketch(sketch_args) => sketch::sketch(sketch_args),
         Mode::Analyze(analyze_args) => analyze::analyze(analyze_args),
+        Mode::Calibrate(calibrate_args) => calibrate::calibrate(calibrate_args),
         Mode::Map(map_args) => mapping::map(map_args),
     }
 }

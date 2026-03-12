@@ -294,6 +294,40 @@ impl KVmerSet {
         num_consensus
     }
 
+    /// Walk every observation for a given key base-by-base against `consensus`.
+    /// For each observation (qual string):
+    ///   - empty qual string (FASTA source) → skipped entirely
+    ///   - at each position p (0 = first/leftmost base = MSB pair):
+    ///       match   → increment qscore_correct[phred] and continue
+    ///       mismatch → increment qscore_error[phred] and stop this observation
+    fn accumulate_qscore_calibration(
+        consensus: u64,
+        value_size: u8,
+        value_map: &HashMap<u64, Vec<Vec<u8>>>,
+        qscore_correct: &mut HashMap<u8, u64>,
+        qscore_error: &mut HashMap<u8, u64>,
+    ) {
+        for (value, qual_list) in value_map {
+            for qual_string in qual_list {
+                if qual_string.is_empty() {
+                    continue; // no quality data (FASTA source)
+                }
+                for p in 0..value_size as usize {
+                    let bit_shift = 2 * (value_size as usize - 1 - p);
+                    let value_base     = (value     >> bit_shift) & 0b11;
+                    let consensus_base = (consensus >> bit_shift) & 0b11;
+                    let phred = qual_string[p].saturating_sub(33);
+                    if value_base == consensus_base {
+                        *qscore_correct.entry(phred).or_insert(0) += 1;
+                    } else {
+                        *qscore_error.entry(phred).or_insert(0) += 1;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
     pub fn get_stats(&self, threshold: u32) -> KVmerStats {
         // record the keys and consensus values for output
         let mut keys: Vec<u64> = Vec::new();
@@ -312,6 +346,9 @@ impl KVmerSet {
         let mut total_counts: Vec<u32> = Vec::new();
         // Number of time a one-edit neighbor of the consensus value appears
         let mut neighbor_counts: Vec<u32> = Vec::new();
+        // Quality-score calibration accumulators
+        let mut qscore_correct: HashMap<u8, u64> = HashMap::new();
+        let mut qscore_error: HashMap<u8, u64> = HashMap::new();
 
         for (key, value_map) in &self.key_value_qual_map {
 
@@ -370,6 +407,9 @@ impl KVmerSet {
             }
             //println!("{:?}", error_positions);
 
+            // quality-score calibration for this key
+            Self::accumulate_qscore_calibration(max_value, self.value_size, value_map, &mut qscore_correct, &mut qscore_error);
+
             // update the vectors
             keys.push(*key);
             consensus_values.push(max_value);
@@ -389,6 +429,8 @@ impl KVmerSet {
             neighbor_counts,
             error_counts,
             consensus_up_to_v_counts,
+            qscore_correct,
+            qscore_error,
         }
     }
 
@@ -411,6 +453,9 @@ impl KVmerSet {
         let mut total_counts: Vec<u32> = Vec::new();
         // Number of time a one-edit neighbor of the consensus value appears
         let mut neighbor_counts: Vec<u32> = Vec::new();
+        // Quality-score calibration accumulators
+        let mut qscore_correct: HashMap<u8, u64> = HashMap::new();
+        let mut qscore_error: HashMap<u8, u64> = HashMap::new();
 
         // for debugging: the number of k-mers that the read set shares with the reference
         let mut shared_kmer_count: u32 = 0;
@@ -481,6 +526,9 @@ impl KVmerSet {
             }
             //println!("{:?}", error_positions);
 
+            // quality-score calibration for this key
+            Self::accumulate_qscore_calibration(consensus_value, self.value_size, value_map, &mut qscore_correct, &mut qscore_error);
+
             // update the vectors
             keys.push(*key);
             consensus_values.push(consensus_value);
@@ -504,6 +552,8 @@ impl KVmerSet {
             neighbor_counts,
             error_counts,
             consensus_up_to_v_counts,
+            qscore_correct,
+            qscore_error,
         }
 
 
