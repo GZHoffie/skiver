@@ -288,8 +288,8 @@ pub unsafe fn extract_markers_avx2_masked(string: &[u8], keys_vec: &mut Vec<u64>
             rolling_key_r = _mm256_and_si256(rolling_key_r, mm256_key_mask);
             rolling_key_r = _mm256_or_si256(rolling_key_r, shift_nuc_r);
         }
-        
-        
+
+
         let hash_key_f = mm_hash256_masked(rolling_key_f, None);
         let h1 = _mm256_extract_epi64(hash_key_f, 0) as u64;
         let h2 = _mm256_extract_epi64(hash_key_f, 1) as u64;
@@ -355,6 +355,209 @@ pub unsafe fn extract_markers_avx2_masked(string: &[u8], keys_vec: &mut Vec<u64>
             if hr4 < threshold_marker {
                 keys_vec.push(rkey4 as u64);
                 values_vec.push(rvalue4 as u64);
+            }
+        }
+    }
+}}
+
+/**
+ * Like `extract_markers_avx2_masked`, but also records the Phred quality scores
+ * for each selected value.
+ *
+ * The string is split into 4 lanes.  Lane `j` (0-indexed) starts at offset
+ * `j * lane_len` in the original string/qual slice.  At loop iteration `i`:
+ *   - Forward value for lane j covers original positions [j*lane_len + i-v+1 .. j*lane_len + i].
+ *   - RC value for lane j covers original positions [j*lane_len + i-k-v+1 .. j*lane_len + i-k]
+ *     in *reversed* order (position 0 of RC value → original position j*lane_len + i-k).
+ */
+#[target_feature(enable = "avx2")]
+pub unsafe fn extract_markers_avx2_masked_with_qual(string: &[u8], qual: &[u8], keys_vec: &mut Vec<u64>, values_vec: &mut Vec<u64>, quals_vec: &mut Vec<Vec<u8>>, c: usize, k: usize, v: usize, bidirectional: bool) { unsafe {
+    let t = k + v;
+
+    if string.len() < t {
+        return;
+    }
+
+    let len = (string.len() - t + 1) / 4;
+    if len <= 0 {
+        return;
+    }
+
+    // Lane offsets into the original string/qual.
+    let offsets = [0usize, len, 2 * len, 3 * len];
+
+    let string1 = &string[offsets[0]..offsets[0] + len + t - 1];
+    let string2 = &string[offsets[1]..offsets[1] + len + t - 1];
+    let string3 = &string[offsets[2]..offsets[2] + len + t - 1];
+    let string4 = &string[offsets[3]..offsets[3] + len + t - 1];
+
+    let mut rolling_key_f = _mm256_set_epi64x(0, 0, 0, 0);
+    let mut rolling_value_f = _mm256_set_epi64x(0, 0, 0, 0);
+    let mut rolling_key_r = _mm256_set_epi64x(0, 0, 0, 0);
+    let mut rolling_value_r = _mm256_set_epi64x(0, 0, 0, 0);
+
+    let rev_sub = _mm256_set_epi64x(3, 3, 3, 3);
+
+    // Initialize keys
+    for i in 0..k - 1 {
+        let nuc_f1 = BYTE_TO_SEQ[string1[i] as usize] as i64;
+        let nuc_f2 = BYTE_TO_SEQ[string2[i] as usize] as i64;
+        let nuc_f3 = BYTE_TO_SEQ[string3[i] as usize] as i64;
+        let nuc_f4 = BYTE_TO_SEQ[string4[i] as usize] as i64;
+        let f_nucs = _mm256_set_epi64x(nuc_f4, nuc_f3, nuc_f2, nuc_f1);
+        rolling_key_f = _mm256_slli_epi64(rolling_key_f, 2);
+        rolling_key_f = _mm256_or_si256(rolling_key_f, f_nucs);
+    }
+
+    // Initialize values
+    for i in 0..v {
+        let nuc_f1 = BYTE_TO_SEQ[string1[i + k - 1] as usize] as i64;
+        let nuc_f2 = BYTE_TO_SEQ[string2[i + k - 1] as usize] as i64;
+        let nuc_f3 = BYTE_TO_SEQ[string3[i + k - 1] as usize] as i64;
+        let nuc_f4 = BYTE_TO_SEQ[string4[i + k - 1] as usize] as i64;
+        let f_nucs = _mm256_set_epi64x(nuc_f4, nuc_f3, nuc_f2, nuc_f1);
+        rolling_value_f = _mm256_slli_epi64(rolling_value_f, 2);
+        rolling_value_f = _mm256_or_si256(rolling_value_f, f_nucs);
+    }
+
+    if bidirectional {
+        for i in 0..v - 1 {
+            let nuc_r1 = 3 - BYTE_TO_SEQ[string1[i] as usize] as i64;
+            let nuc_r2 = 3 - BYTE_TO_SEQ[string2[i] as usize] as i64;
+            let nuc_r3 = 3 - BYTE_TO_SEQ[string3[i] as usize] as i64;
+            let nuc_r4 = 3 - BYTE_TO_SEQ[string4[i] as usize] as i64;
+            let r_nucs = _mm256_set_epi64x(nuc_r4, nuc_r3, nuc_r2, nuc_r1);
+            rolling_value_r = _mm256_srli_epi64(rolling_value_r, 2);
+            let shift_value_r = _shift_mm256_left_by_k(r_nucs, v);
+            rolling_value_r = _mm256_or_si256(rolling_value_r, shift_value_r);
+        }
+        for i in 0..k {
+            let nuc_r1 = 3 - BYTE_TO_SEQ[string1[i + v - 1] as usize] as i64;
+            let nuc_r2 = 3 - BYTE_TO_SEQ[string2[i + v - 1] as usize] as i64;
+            let nuc_r3 = 3 - BYTE_TO_SEQ[string3[i + v - 1] as usize] as i64;
+            let nuc_r4 = 3 - BYTE_TO_SEQ[string4[i + v - 1] as usize] as i64;
+            let r_nucs = _mm256_set_epi64x(nuc_r4, nuc_r3, nuc_r2, nuc_r1);
+            rolling_key_r = _mm256_srli_epi64(rolling_key_r, 2);
+            let shift_nuc_r = _shift_mm256_left_by_k(r_nucs, k);
+            rolling_key_r = _mm256_or_si256(rolling_key_r, shift_nuc_r);
+        }
+    }
+
+    let key_mask = ((1u64 << (2 * k)) - 1) as i64;
+    let value_mask = ((1u64 << (2 * v)) - 1) as i64;
+    let threshold_marker = u64::MAX / c as u64;
+
+    let mm256_key_mask = _mm256_set_epi64x(key_mask, key_mask, key_mask, key_mask);
+    let mm256_value_mask = _mm256_set_epi64x(value_mask, value_mask, value_mask, value_mask);
+
+    for i in k + v - 1..(len + t - 1) {
+        let nuc_f1 = BYTE_TO_SEQ[string1[i] as usize] as i64;
+        let nuc_f2 = BYTE_TO_SEQ[string2[i] as usize] as i64;
+        let nuc_f3 = BYTE_TO_SEQ[string3[i] as usize] as i64;
+        let nuc_f4 = BYTE_TO_SEQ[string4[i] as usize] as i64;
+
+        let f_nucs = _mm256_set_epi64x(nuc_f4, nuc_f3, nuc_f2, nuc_f1);
+
+        let first_base_v = _mm256_and_si256(_shift_mm256_right_by_k(rolling_value_f, v), rev_sub);
+
+        rolling_key_f = _mm256_slli_epi64(rolling_key_f, 2);
+        rolling_key_f = _mm256_or_si256(rolling_key_f, first_base_v);
+        rolling_key_f = _mm256_and_si256(rolling_key_f, mm256_key_mask);
+
+        rolling_value_f = _mm256_slli_epi64(rolling_value_f, 2);
+        rolling_value_f = _mm256_or_si256(rolling_value_f, f_nucs);
+        rolling_value_f = _mm256_and_si256(rolling_value_f, mm256_value_mask);
+
+        if bidirectional {
+            let last_base_k = _mm256_and_si256(rolling_key_r, rev_sub);
+            let r_nucs = _mm256_sub_epi64(rev_sub, f_nucs);
+
+            rolling_value_r = _mm256_srli_epi64(rolling_value_r, 2);
+            let shift_value_r = _shift_mm256_left_by_k(last_base_k, v);
+            rolling_value_r = _mm256_and_si256(rolling_value_r, mm256_value_mask);
+            rolling_value_r = _mm256_or_si256(rolling_value_r, shift_value_r);
+
+            rolling_key_r = _mm256_srli_epi64(rolling_key_r, 2);
+            let shift_nuc_r = _shift_mm256_left_by_k(r_nucs, k);
+            rolling_key_r = _mm256_and_si256(rolling_key_r, mm256_key_mask);
+            rolling_key_r = _mm256_or_si256(rolling_key_r, shift_nuc_r);
+        }
+
+        let hash_key_f = mm_hash256_masked(rolling_key_f, None);
+        let h1 = _mm256_extract_epi64(hash_key_f, 0) as u64;
+        let h2 = _mm256_extract_epi64(hash_key_f, 1) as u64;
+        let h3 = _mm256_extract_epi64(hash_key_f, 2) as u64;
+        let h4 = _mm256_extract_epi64(hash_key_f, 3) as u64;
+
+        let key1 = _mm256_extract_epi64(rolling_key_f, 0) as u64;
+        let key2 = _mm256_extract_epi64(rolling_key_f, 1) as u64;
+        let key3 = _mm256_extract_epi64(rolling_key_f, 2) as u64;
+        let key4 = _mm256_extract_epi64(rolling_key_f, 3) as u64;
+
+        let value1 = _mm256_extract_epi64(rolling_value_f, 0) as u64;
+        let value2 = _mm256_extract_epi64(rolling_value_f, 1) as u64;
+        let value3 = _mm256_extract_epi64(rolling_value_f, 2) as u64;
+        let value4 = _mm256_extract_epi64(rolling_value_f, 3) as u64;
+
+        // Forward qual: lane j covers original positions [offsets[j]+i-v+1 .. offsets[j]+i].
+        if h1 < threshold_marker {
+            keys_vec.push(key1);
+            values_vec.push(value1);
+            quals_vec.push(qual[offsets[0] + i - v + 1..=offsets[0] + i].to_vec());
+        }
+        if h2 < threshold_marker {
+            keys_vec.push(key2);
+            values_vec.push(value2);
+            quals_vec.push(qual[offsets[1] + i - v + 1..=offsets[1] + i].to_vec());
+        }
+        if h3 < threshold_marker {
+            keys_vec.push(key3);
+            values_vec.push(value3);
+            quals_vec.push(qual[offsets[2] + i - v + 1..=offsets[2] + i].to_vec());
+        }
+        if h4 < threshold_marker {
+            keys_vec.push(key4);
+            values_vec.push(value4);
+            quals_vec.push(qual[offsets[3] + i - v + 1..=offsets[3] + i].to_vec());
+        }
+
+        if bidirectional {
+            let hash_key_r = mm_hash256_masked(rolling_key_r, None);
+            let hr1 = _mm256_extract_epi64(hash_key_r, 0) as u64;
+            let hr2 = _mm256_extract_epi64(hash_key_r, 1) as u64;
+            let hr3 = _mm256_extract_epi64(hash_key_r, 2) as u64;
+            let hr4 = _mm256_extract_epi64(hash_key_r, 3) as u64;
+
+            let rkey1 = _mm256_extract_epi64(rolling_key_r, 0) as u64;
+            let rkey2 = _mm256_extract_epi64(rolling_key_r, 1) as u64;
+            let rkey3 = _mm256_extract_epi64(rolling_key_r, 2) as u64;
+            let rkey4 = _mm256_extract_epi64(rolling_key_r, 3) as u64;
+
+            let rvalue1 = _mm256_extract_epi64(rolling_value_r, 0) as u64;
+            let rvalue2 = _mm256_extract_epi64(rolling_value_r, 1) as u64;
+            let rvalue3 = _mm256_extract_epi64(rolling_value_r, 2) as u64;
+            let rvalue4 = _mm256_extract_epi64(rolling_value_r, 3) as u64;
+
+            // RC qual: lane j, RC value position p → original position offsets[j]+i-k-p.
+            if hr1 < threshold_marker {
+                keys_vec.push(rkey1);
+                values_vec.push(rvalue1);
+                quals_vec.push((0..v).map(|p| qual[offsets[0] + i - k - p]).collect());
+            }
+            if hr2 < threshold_marker {
+                keys_vec.push(rkey2);
+                values_vec.push(rvalue2);
+                quals_vec.push((0..v).map(|p| qual[offsets[1] + i - k - p]).collect());
+            }
+            if hr3 < threshold_marker {
+                keys_vec.push(rkey3);
+                values_vec.push(rvalue3);
+                quals_vec.push((0..v).map(|p| qual[offsets[2] + i - k - p]).collect());
+            }
+            if hr4 < threshold_marker {
+                keys_vec.push(rkey4);
+                values_vec.push(rvalue4);
+                quals_vec.push((0..v).map(|p| qual[offsets[3] + i - k - p]).collect());
             }
         }
     }

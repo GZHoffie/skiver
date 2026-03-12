@@ -19,7 +19,12 @@ pub struct KVmerSet {
     pub value_size: u8,
     pub kv_size: u8,
     pub num_kvmers: u32,
-    pub key_value_map: HashMap<u64, HashMap<u64, u32>>,
+
+    /// key -> value -> list of per-observation quality-score strings.
+    /// Each inner Vec<u8> has exactly `value_size` bytes (Phred+33 encoded),
+    /// or is empty when the source had no quality data (FASTA).
+    /// The count of a (key, value) pair is `qual_list.len()`.
+    pub key_value_qual_map: HashMap<u64, HashMap<u64, Vec<Vec<u8>>>>,
 
     // utilities to extract key and value from a kmer hash
     key_mask: u64,
@@ -42,7 +47,7 @@ impl KVmerSet {
             value_size,
             kv_size: key_size + value_size,
             num_kvmers: 0,
-            key_value_map: HashMap::new(),
+            key_value_qual_map: HashMap::new(),
             key_mask: k_mask,
             value_mask: v_mask,
             bidirectional,
@@ -112,14 +117,17 @@ impl KVmerSet {
     }
 
 
-
-    pub fn add_kv_vector(&mut self, key_vec: &[u64], value_vec: &[u64]) {
-        assert!(key_vec.len() == value_vec.len(), "Key and value vectors must have the same length.");
-        for (&key, &value) in key_vec.iter().zip(value_vec.iter()) {
-            //println!("Adding key: {}, value: {}", self.to_key_string(key), self.to_value_string(value));
-            let entry = self.key_value_map.entry(key).or_insert_with(HashMap::new);
-            let count = entry.entry(value).or_insert(0);
-            *count += 1;
+    /// Record a batch of (key, value, qual_string) triples.
+    /// `qual_vec[i]` should have exactly `value_size` bytes, or be empty for
+    /// observations from quality-free sources (FASTA).
+    pub fn add_kv_qual_vector(&mut self, key_vec: &[u64], value_vec: &[u64], qual_vec: &[Vec<u8>]) {
+        assert!(key_vec.len() == value_vec.len() && key_vec.len() == qual_vec.len(),
+                "Key, value, and qual vectors must have the same length.");
+        for ((&key, &value), qual) in key_vec.iter().zip(value_vec.iter()).zip(qual_vec.iter()) {
+            self.key_value_qual_map
+                .entry(key).or_insert_with(HashMap::new)
+                .entry(value).or_insert_with(Vec::new)
+                .push(qual.clone());
         }
         self.num_kvmers += key_vec.len() as u32;
     }
@@ -147,6 +155,29 @@ impl KVmerSet {
         }
     }
 
+    /// Like `extract_markers_masked`, but also extracts quality scores.
+    fn extract_markers_masked_with_qual(&self, string: &[u8], qual: &[u8], key_vec: &mut Vec<u64>, value_vec: &mut Vec<u64>, qual_vec: &mut Vec<Vec<u8>>, c: usize, trim_front: usize, trim_back: usize) {
+        let start = std::cmp::min(trim_front, string.len());
+        let end = string.len().saturating_sub(trim_back);
+        let string_trimmed = &string[start..end];
+        let qual_trimmed = &qual[start..end];
+        #[cfg(any(target_arch = "x86_64"))]
+        {
+            if is_x86_feature_detected!("avx2") {
+                use crate::avx2_seeding::*;
+                unsafe {
+                    extract_markers_avx2_masked_with_qual(string_trimmed, qual_trimmed, key_vec, value_vec, qual_vec, c, self.key_size as usize, self.value_size as usize, self.bidirectional);
+                }
+            } else {
+                fmh_seeds_masked_with_qual(string_trimmed, qual_trimmed, key_vec, value_vec, qual_vec, c, self.key_size as usize, self.value_size as usize, self.bidirectional);
+            }
+        }
+        #[cfg(not(target_arch = "x86_64"))]
+        {
+            fmh_seeds_masked_with_qual(string_trimmed, qual_trimmed, key_vec, value_vec, qual_vec, c, self.key_size as usize, self.value_size as usize, self.bidirectional);
+        }
+    }
+
     // MODIFIED: Added BAM/SAM support
     pub fn add_file_to_kvmer_set(
         &mut self,
@@ -168,10 +199,12 @@ impl KVmerSet {
                         match record_result {
                             Ok(record) => {
                                 let seq = record.seq().as_bytes();
+                                let qual = record.qual().to_vec();
                                 let mut key_vec: Vec<u64> = Vec::new();
                                 let mut value_vec: Vec<u64> = Vec::new();
-                                self.extract_markers_masked(&seq, &mut key_vec, &mut value_vec, c, trim_front, trim_back);
-                                self.add_kv_vector(&key_vec, &value_vec);
+                                let mut qual_vec: Vec<Vec<u8>> = Vec::new();
+                                self.extract_markers_masked_with_qual(&seq, &qual, &mut key_vec, &mut value_vec, &mut qual_vec, c, trim_front, trim_back);
+                                self.add_kv_qual_vector(&key_vec, &value_vec, &qual_vec);
                             }
                             Err(e) => warn!("Error reading BAM/SAM record: {}", e),
                         }
@@ -191,8 +224,17 @@ impl KVmerSet {
                     Ok(record) => {
                         let mut key_vec: Vec<u64> = Vec::new();
                         let mut value_vec: Vec<u64> = Vec::new();
-                        self.extract_markers_masked(&record.seq(), &mut key_vec, &mut value_vec, c, trim_front, trim_back);
-                        self.add_kv_vector(&key_vec, &value_vec);
+                        if let Some(qual) = record.qual() {
+                            // FASTQ: record quality scores alongside k,v-mers.
+                            let mut qual_vec: Vec<Vec<u8>> = Vec::new();
+                            self.extract_markers_masked_with_qual(&record.seq(), qual, &mut key_vec, &mut value_vec, &mut qual_vec, c, trim_front, trim_back);
+                            self.add_kv_qual_vector(&key_vec, &value_vec, &qual_vec);
+                        } else {
+                            // FASTA: no quality scores; push empty qual strings.
+                            self.extract_markers_masked(&record.seq(), &mut key_vec, &mut value_vec, c, trim_front, trim_back);
+                            let qual_vec: Vec<Vec<u8>> = vec![vec![]; key_vec.len()];
+                            self.add_kv_qual_vector(&key_vec, &value_vec, &qual_vec);
+                        }
                     }
                     Err(e) => warn!("Error reading record: {}", e),
                 }
@@ -207,12 +249,12 @@ impl KVmerSet {
         let mut shared_key_values = 0;
         let mut total_key_values = 0;
 
-        for (key, value_map) in &self.key_value_map {
-            if let Some(other_value_map) = other.key_value_map.get(key) {
+        for (key, value_map) in &self.key_value_qual_map {
+            if let Some(other_value_map) = other.key_value_qual_map.get(key) {
                 shared_keys += 1;
 
-                for (value, _count) in value_map {
-                    if let Some(_other_count) = other_value_map.get(value) {
+                for (value, _qual_list) in value_map {
+                    if let Some(_other_qual_list) = other_value_map.get(value) {
                         shared_key_values += 1;
                     }
                 }
@@ -220,10 +262,10 @@ impl KVmerSet {
             total_key_values += value_map.len();
         }
 
-        let key_containment = if self.key_value_map.is_empty() {
+        let key_containment = if self.key_value_qual_map.is_empty() {
             0.0
         } else {
-            shared_keys as f64 / self.key_value_map.len() as f64
+            shared_keys as f64 / self.key_value_qual_map.len() as f64
         };
 
         let key_value_containment = if total_key_values == 0 {
@@ -239,14 +281,14 @@ impl KVmerSet {
      * Find the number of one-edit neighbors of the consensus value[0:v].
      * [FIXME] Optimize this function.
      */
-    fn _num_consensus_up_to_v(&self, consensus: u64, v: u8, _bidirectional: bool, value_map: &HashMap<u64, u32>) -> u32 {
+    fn _num_consensus_up_to_v(&self, consensus: u64, v: u8, _bidirectional: bool, value_map: &HashMap<u64, Vec<Vec<u8>>>) -> u32 {
         let consensus_up_to_v = consensus >> ((self.value_size - v) * 2);
 
         let mut num_consensus: u32 = 0;
-        for (neighbor, count) in value_map {
+        for (neighbor, qual_list) in value_map {
             let _neighbors_up_to_v = neighbor >> ((self.value_size - v) * 2);
             if _neighbors_up_to_v == consensus_up_to_v {
-                num_consensus += count;
+                num_consensus += qual_list.len() as u32;
             }
         }
         num_consensus
@@ -271,19 +313,18 @@ impl KVmerSet {
         // Number of time a one-edit neighbor of the consensus value appears
         let mut neighbor_counts: Vec<u32> = Vec::new();
 
-        for (key, value_map) in &self.key_value_map {
-
-
+        for (key, value_map) in &self.key_value_qual_map {
 
             let mut max_count = 0;
             let mut sum_count = 0;
             let mut max_value: u64 = 0;
 
             // find the consensus value
-            for (value, count) in value_map {
-                sum_count += *count;
-                if *count > max_count {
-                    max_count = *count;
+            for (value, qual_list) in value_map {
+                let count = qual_list.len() as u32;
+                sum_count += count;
+                if count > max_count {
+                    max_count = count;
                     max_value = *value;
                 }
             }
@@ -294,8 +335,8 @@ impl KVmerSet {
             }
 
             //println!("Key: {}", self.to_key_string(*key));
-            //for (value, count) in value_map {
-            //    println!("  Reference value: {}, count: {}", self.to_value_string(*value), count);
+            //for (value, qual_list) in value_map {
+            //    println!("  Reference value: {}, count: {}", self.to_value_string(*value), qual_list.len());
             //}
 
             // Find the count of error types at v=self.value_size
@@ -312,18 +353,18 @@ impl KVmerSet {
                 consensus_up_to_v_counts[(v - MIN_VALUE_FOR_ERROR_ESTIMATION) as usize].push(consensus_up_to_v);
             }
 
-
             let mut num_neighbors = 0;
             //println!("Neighbors of {}: {:?}", max_value, neighbors);
             //println!("Analyzing key: {}, consensus value: {}", self.to_key_string(*key), self.to_value_string(max_value));
-            for (value, count) in value_map {
+            for (value, qual_list) in value_map {
+                let count = qual_list.len() as u32;
                 if *value != max_value && neighbors.contains_key(value) {
                     let (op, prev_base, next_base) = neighbors.get(value).unwrap();
                     //println!("Value: {}, Operation: {:?}, Position: {}", self.to_value_string(*value), op, pos);
 
                     // update the error count map
                     let entry = error_count_map.entry((*op, *prev_base, *next_base)).or_insert(0);
-                    *entry += *count;
+                    *entry += count;
                     num_neighbors += count;
                 }
             }
@@ -374,30 +415,29 @@ impl KVmerSet {
         // for debugging: the number of k-mers that the read set shares with the reference
         let mut shared_kmer_count: u32 = 0;
 
-        for (key, ref_value_map) in &reference.key_value_map {
+        for (key, ref_value_map) in &reference.key_value_qual_map {
 
-            if !self.key_value_map.contains_key(&key) {
+            if !self.key_value_qual_map.contains_key(&key) {
                 continue;
             }
 
             let consensus_value = *ref_value_map.keys().next().unwrap();
-            let value_map = self.key_value_map.get(&key).unwrap();
-
-
+            let value_map = self.key_value_qual_map.get(&key).unwrap();
 
             let mut max_count = 0;
             let mut sum_count = 0;
             let mut max_value: u64 = 0;
 
             // find the consensus value
-            for (value, count) in value_map {
-                sum_count += *count;
-                if *count > max_count {
-                    max_count = *count;
+            for (value, qual_list) in value_map {
+                let count = qual_list.len() as u32;
+                sum_count += count;
+                if count > max_count {
+                    max_count = count;
                     max_value = *value;
                 }
             }
-            let consensus_count = *value_map.get(&consensus_value).unwrap_or(&0);
+            let consensus_count = value_map.get(&consensus_value).map_or(0, |q| q.len() as u32);
             shared_kmer_count += sum_count;
 
             if ref_value_map.len() > 1 {
@@ -411,8 +451,6 @@ impl KVmerSet {
             if sum_count <= threshold {
                 continue;
             }
-
-
 
             // Find the count of error types at v=self.value_size
             let mut error_count_map: HashMap<(EditOperation, u8, u8), u32> = HashMap::new();
@@ -428,16 +466,16 @@ impl KVmerSet {
                 consensus_up_to_v_counts[(v - 1) as usize].push(consensus_up_to_v);
             }
 
-
             let mut num_neighbors = 0;
-            for (value, count) in value_map {
+            for (value, qual_list) in value_map {
+                let count = qual_list.len() as u32;
                 if *value != consensus_value && neighbors.contains_key(value) {
                     let (op, prev_base, next_base) = neighbors.get(value).unwrap();
                     //println!("Value: {}, Operation: {:?}, Position: {}", self.to_value_string(*value), op, pos);
 
                     // update the error count map
                     let entry = error_count_map.entry((*op, *prev_base, *next_base)).or_insert(0);
-                    *entry += *count;
+                    *entry += count;
                     num_neighbors += count;
                 }
             }
@@ -551,11 +589,10 @@ impl KVmerSet {
         if self.key_size != that.key_size || self.value_size != that.value_size {
             warn!("Key size or value size does not match when loading KVmerSet from file. Skipping input file {}.", input_file);
         } else {
-            for (kmer, value_map) in that.key_value_map {
-                let entry = self.key_value_map.entry(kmer).or_insert_with(HashMap::new);
-                for (value, count) in value_map {
-                    let count_entry = entry.entry(value).or_insert(0);
-                    *count_entry += count;
+            for (kmer, value_map) in that.key_value_qual_map {
+                let entry = self.key_value_qual_map.entry(kmer).or_insert_with(HashMap::new);
+                for (value, qual_list) in value_map {
+                    entry.entry(value).or_insert_with(Vec::new).extend(qual_list);
                 }
             }
             self.num_kvmers += that.num_kvmers;
@@ -581,7 +618,7 @@ impl VmerSet {
 
     pub fn add_to_keys(&mut self, seed_vec: &[u64]) {
         for &kmer in seed_vec {
-            let _entry = self.kvmer_set.key_value_map.entry(kmer).or_insert_with(HashMap::new);
+            let _entry = self.kvmer_set.key_value_qual_map.entry(kmer).or_insert_with(HashMap::new);
         }
     }
 
@@ -619,14 +656,14 @@ impl VmerSet {
                         }
                     )
                     .or_insert(BASES_TO_INSERTION[b as usize].unwrap());
-                
-                
-                
+
+
+
                 let right_part = value & ((1 << shift) - 1);
                 let neighbor_delete = left_part | (right_part << 2) | b;
                 let original_base = (value >> shift) & 0b11;
                 neighbors.entry(neighbor_delete)
-                    .and_modify(|op| 
+                    .and_modify(|op|
                         if *op != BASES_TO_DELETION[original_base as usize].unwrap() {
                             *op = EditOperation::AMBIGUOUS
                         }
@@ -643,7 +680,7 @@ impl VmerSet {
         let mut relevant_values: HashSet<u64> = HashSet::new();
 
         // for all the keys in kvmer_set with counts above threshold, get their neighbors
-        for (key, _) in &self.kvmer_set.key_value_map {
+        for (key, _) in &self.kvmer_set.key_value_qual_map {
             relevant_values.insert(*key);
             let neighbors = _get_neighbors(*key, self.value_size as u8, self.kvmer_set.bidirectional);
             for (neighbor, _op) in neighbors {
@@ -749,34 +786,35 @@ impl VmerSet {
 
     pub fn add_value_counts(&mut self, value_count: &HashMap<u64, u32>) {
         let mut keys_to_remove: Vec<u64> = Vec::new();
-        for (key, value_map) in &mut self.kvmer_set.key_value_map {
-            if let Some(value_count) = value_count.get(key) {
-                let entry = value_map.entry(*key).or_insert(0);
-                *entry += *value_count;
+        for (key, value_map) in &mut self.kvmer_set.key_value_qual_map {
+            if let Some(&count) = value_count.get(key) {
+                // No quality data available; push `count` empty qual strings.
+                let entry = value_map.entry(*key).or_insert_with(Vec::new);
+                entry.extend(std::iter::repeat(vec![]).take(count as usize));
             } else {
                 continue;
             }
             let neighbors = _get_neighbors(*key, self.value_size as u8, self.kvmer_set.bidirectional);
 
-            let mut max_count = 0;
+            let mut max_count = 0u32;
             for (value, _op) in neighbors {
-                if let Some(count) = value_count.get(&value) {
-                    let entry = value_map.entry(value).or_insert(0);
-                    *entry += *count;
-                    max_count = max_count.max(*entry);
+                if let Some(&count) = value_count.get(&value) {
+                    let entry = value_map.entry(value).or_insert_with(Vec::new);
+                    entry.extend(std::iter::repeat(vec![]).take(count as usize));
+                    max_count = max_count.max(entry.len() as u32);
                 }
             }
 
             // if the max count is larger than the count of the key itself,
             // delete this key from the kvmer_set
-            if let Some(count) = value_map.get(key) {
-                if *count < max_count {
+            if let Some(qual_list) = value_map.get(key) {
+                if (qual_list.len() as u32) < max_count {
                     keys_to_remove.push(*key);
                 }
             }
         }
         for key in keys_to_remove {
-            self.kvmer_set.key_value_map.remove(&key);
+            self.kvmer_set.key_value_qual_map.remove(&key);
         }
     }
 

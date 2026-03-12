@@ -185,6 +185,115 @@ pub fn fmh_seeds_masked(
     }
 }
 
+/// Like `fmh_seeds_masked`, but also records the Phred quality scores for each
+/// selected value.
+///
+/// `quals_vec` receives one entry per selected k,v-mer:
+///   - Forward strand: `qual[i-v+1 ..= i]`  (v bytes, in value-position order)
+///   - RC strand:      `[qual[i-k], qual[i-k-1], ..., qual[i-k-v+1]]`
+///                     (reversed, so index 0 = quality of RC value position 0)
+///
+/// Callers must ensure `qual.len() == string.len()`.
+pub fn fmh_seeds_masked_with_qual(
+    string: &[u8],
+    qual: &[u8],
+    keys_vec: &mut Vec<u64>,
+    values_vec: &mut Vec<u64>,
+    quals_vec: &mut Vec<Vec<u8>>,
+    c: usize,
+    k: usize,
+    v: usize,
+    bidirectional: bool,
+) {
+    type MarkerBits = u64;
+    if string.len() < k + v {
+        return;
+    }
+    debug_assert_eq!(string.len(), qual.len());
+
+    let mut rolling_key_f: MarkerBits = 0;
+    let mut rolling_key_r: MarkerBits = 0;
+    let mut rolling_value_f: MarkerBits = 0;
+    let mut rolling_value_r: MarkerBits = 0;
+
+    let key_mask = (1u64 << (2 * k)) - 1;
+    let value_mask = (1u64 << (2 * v)) - 1;
+    let len = string.len();
+    let threshold_marker = u64::MAX / (c as u64);
+
+    // Initialize keys (k-1 bases)
+    for i in 0..k - 1 {
+        let nuc_f = BYTE_TO_SEQ[string[i] as usize] as u64;
+        rolling_key_f <<= 2;
+        rolling_key_f |= nuc_f;
+    }
+
+    // Initialize values (v bases)
+    for i in 0..v {
+        let nuc_f = BYTE_TO_SEQ[string[i + k - 1] as usize] as u64;
+        rolling_value_f <<= 2;
+        rolling_value_f |= nuc_f;
+    }
+
+    // Initialize RC
+    if bidirectional {
+        for i in 0..v - 1 {
+            let nuc_r = 3 - BYTE_TO_SEQ[string[i] as usize] as u64;
+            rolling_value_r >>= 2;
+            rolling_value_r |= nuc_r << (2 * (v - 1));
+        }
+        for i in 0..k {
+            let nuc_r = 3 - BYTE_TO_SEQ[string[i + v - 1] as usize] as u64;
+            rolling_key_r >>= 2;
+            rolling_key_r |= nuc_r << (2 * (k - 1));
+        }
+    }
+
+    for i in k + v - 1..len {
+        let nuc_f = BYTE_TO_SEQ[string[i] as usize] as u64;
+
+        // Advance forward key/value
+        let first_base_v = (rolling_value_f >> (2 * (v - 1))) & 0b11;
+        rolling_key_f <<= 2;
+        rolling_key_f |= first_base_v;
+        rolling_key_f &= key_mask;
+        rolling_value_f <<= 2;
+        rolling_value_f |= nuc_f;
+        rolling_value_f &= value_mask;
+
+        let hash_f = mm_hash64_masked(rolling_key_f, None);
+        if hash_f < threshold_marker {
+            keys_vec.push(rolling_key_f);
+            values_vec.push(rolling_value_f);
+            // Value covers read positions [i-v+1, i]; position 0 = i-v+1.
+            quals_vec.push(qual[i - v + 1..=i].to_vec());
+        }
+
+        if bidirectional {
+            let nuc_r = 3 - nuc_f;
+            let last_base_k = rolling_key_r & 0b11;
+
+            rolling_value_r >>= 2;
+            rolling_value_r |= last_base_k << (2 * (v - 1));
+            rolling_value_r &= value_mask;
+
+            rolling_key_r >>= 2;
+            rolling_key_r |= nuc_r << (2 * (k - 1));
+            rolling_key_r &= key_mask;
+
+            let hash_r = mm_hash64_masked(rolling_key_r, None);
+            if hash_r < threshold_marker {
+                keys_vec.push(rolling_key_r);
+                values_vec.push(rolling_value_r);
+                // RC value position p corresponds to forward read position (i-k-p).
+                // Quality string is in RC-value-position order: p=0 → qual[i-k].
+                let rc_qual: Vec<u8> = (0..v).map(|p| qual[i - k - p]).collect();
+                quals_vec.push(rc_qual);
+            }
+        }
+    }
+}
+
 pub fn count_seeds_in_set(
     string: &[u8],
     k: usize,
