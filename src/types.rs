@@ -276,6 +276,11 @@ pub struct KVmerStats {
     /// Quality-score calibration: for each Phred score, how many bases were the
     /// first mismatch against the consensus (one per value observation at most).
     pub qscore_error: HashMap<u8, u64>,
+
+    /// Per-key qscore correct counts (parallel to `keys`), enabling index-based filtering.
+    pub qscore_correct_per_key: Vec<HashMap<u8, u64>>,
+    /// Per-key qscore error counts (parallel to `keys`), enabling index-based filtering.
+    pub qscore_error_per_key: Vec<HashMap<u8, u64>>,
 }
 
 

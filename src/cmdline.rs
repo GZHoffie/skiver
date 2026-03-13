@@ -181,4 +181,13 @@ pub struct CalibrateArgs {
 
     #[clap(short = 'b', long = "trim-back", default_value_t = 0, help_heading = "INPUT", help = "Number of bases to trim from the end of each read.")]
     pub trim_back: usize,
+
+    #[clap(short = 'e', long = "outlier-threshold", default_value_t = 3.0, help_heading = "ALGORITHM", help = "IQR multiplier for outlier exclusion before calibration.")]
+    pub outlier_threshold: f32,
+
+    #[clap(long = "num-experiments", default_value_t = 100, help_heading = "ALGORITHM", help = "Number of bootstrap resamples for confidence interval estimation.")]
+    pub num_experiments: u32,
+
+    #[clap(long = "use-all", help_heading = "ALGORITHM", help = "Skip outlier filtering; use all keys for calibration.")]
+    pub use_all: bool,
 }

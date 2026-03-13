@@ -2,7 +2,8 @@ use simple_logger::SimpleLogger;
 use log::info;
 use glob::glob;
 
-use crate::cmdline::CalibrateArgs;
+use crate::cmdline::{AnalyzeArgs, CalibrateArgs};
+use crate::inference::ErrorAnalyzer;
 use crate::kvmer::KVmerSet;
 use crate::utils::{is_fastx_file, is_sketch_file};
 
@@ -40,20 +41,23 @@ pub fn calibrate(args: CalibrateArgs) {
         kvmer_set.get_stats(args.lower_bound)
     };
 
-    // Collect all observed qscores from both maps.
-    let mut qscores: Vec<u8> = stats.qscore_correct.keys()
-        .chain(stats.qscore_error.keys())
-        .cloned()
-        .collect();
-    qscores.sort_unstable();
-    qscores.dedup();
+    let analyze_args = AnalyzeArgs {
+        k: args.k,
+        v: args.v,
+        outlier_threshold: args.outlier_threshold,
+        num_experiments: args.num_experiments,
+        use_all: args.use_all,
+        ignore_last_hazard_ratios: 2,
+        estimation_method: "sum_ratio".to_string(),
+        hazard_model: "weibull".to_string(),
+        ..Default::default()
+    };
+    let analyzer = ErrorAnalyzer::new(analyze_args);
 
-    println!("qscore,num_correct,num_error,error_rate");
-    for q in qscores {
-        let correct = *stats.qscore_correct.get(&q).unwrap_or(&0);
-        let error   = *stats.qscore_error.get(&q).unwrap_or(&0);
-        let total   = correct + error;
-        let error_rate = if total > 0 { error as f64 / total as f64 } else { 0.0 };
-        println!("{},{},{},{:.6}", q, correct, error, error_rate);
+    let results = analyzer.calibrate_qscores(&stats);
+
+    println!("qscore,num_correct,num_error,error_rate,5th_percentile,95th_percentile");
+    for (q, correct, error, error_rate, lower, upper) in results {
+        println!("{},{},{},{:.6},{:.6},{:.6}", q, correct, error, error_rate, lower, upper);
     }
 }

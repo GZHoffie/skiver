@@ -708,6 +708,80 @@ impl ErrorAnalyzer {
     }
 
 
+    /// For each observed Phred score, compute the empirical error rate using only
+    /// inlier keys (filtered by `find_hazard_ratio_outliers`), then bootstrap over
+    /// those key indices to estimate the 5th–95th percentile confidence interval.
+    ///
+    /// Returns a vector of `(qscore, num_correct, num_error, error_rate, ci_lower, ci_upper)`.
+    pub fn calibrate_qscores(&self, stats: &KVmerStats) -> Vec<(u8, u64, u64, f64, f64, f64)> {
+        // Filter outlier keys
+        let indices = if !self.args.use_all {
+            self.find_hazard_ratio_outliers(stats)
+        } else {
+            (0..stats.consensus_counts.len()).collect()
+        };
+
+        // Aggregate qscore counts from inlier keys
+        let mut qscore_correct: HashMap<u8, u64> = HashMap::new();
+        let mut qscore_error: HashMap<u8, u64> = HashMap::new();
+        for &i in &indices {
+            for (&q, &c) in &stats.qscore_correct_per_key[i] {
+                *qscore_correct.entry(q).or_insert(0) += c;
+            }
+            for (&q, &e) in &stats.qscore_error_per_key[i] {
+                *qscore_error.entry(q).or_insert(0) += e;
+            }
+        }
+
+        let mut qscores: Vec<u8> = qscore_correct.keys()
+            .chain(qscore_error.keys())
+            .cloned()
+            .collect();
+        qscores.sort_unstable();
+        qscores.dedup();
+
+        // Bootstrap: resample key indices with replacement, recompute error rates
+        let mut bootstrap_rates: HashMap<u8, Vec<f64>> = qscores.iter().map(|&q| (q, Vec::new())).collect();
+        for _ in 0..self.args.num_experiments {
+            let sample = Self::random_subsample_with_replacement(&indices, indices.len());
+            let mut c_sample: HashMap<u8, u64> = HashMap::new();
+            let mut e_sample: HashMap<u8, u64> = HashMap::new();
+            for &i in &sample {
+                for (&q, &c) in &stats.qscore_correct_per_key[i] {
+                    *c_sample.entry(q).or_insert(0) += c;
+                }
+                for (&q, &e) in &stats.qscore_error_per_key[i] {
+                    *e_sample.entry(q).or_insert(0) += e;
+                }
+            }
+            for &q in &qscores {
+                let c = *c_sample.get(&q).unwrap_or(&0);
+                let e = *e_sample.get(&q).unwrap_or(&0);
+                let total = c + e;
+                let rate = if total > 0 { e as f64 / total as f64 } else { 0.0 };
+                bootstrap_rates.get_mut(&q).unwrap().push(rate);
+            }
+        }
+
+        // Build result with point estimates and CI
+        let mut result = Vec::new();
+        for &q in &qscores {
+            let correct = *qscore_correct.get(&q).unwrap_or(&0);
+            let error   = *qscore_error.get(&q).unwrap_or(&0);
+            let total   = correct + error;
+            let error_rate = if total > 0 { error as f64 / total as f64 } else { 0.0 };
+
+            let mut rates = bootstrap_rates[&q].clone();
+            rates.sort_by(f64::total_cmp);
+            let n = rates.len();
+            let lower = if n > 0 { rates[(n as f64 * 0.05) as usize] } else { 0.0 };
+            let upper = if n > 0 { rates[((n as f64 * 0.95) as usize).min(n - 1)] } else { 0.0 };
+
+            result.push((q, correct, error, error_rate, lower, upper));
+        }
+        result
+    }
+
     pub fn analyze(&self, stats: &KVmerStats) -> ErrorSpectrum {
         // exclude the hazard ratio outliers
         let indices = if !self.args.use_all {

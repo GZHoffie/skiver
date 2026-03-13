@@ -304,9 +304,9 @@ impl KVmerSet {
         consensus: u64,
         value_size: u8,
         value_map: &HashMap<u64, Vec<Vec<u8>>>,
-        qscore_correct: &mut HashMap<u8, u64>,
-        qscore_error: &mut HashMap<u8, u64>,
-    ) {
+    ) -> (HashMap<u8, u64>, HashMap<u8, u64>) {
+        let mut qscore_correct: HashMap<u8, u64> = HashMap::new();
+        let mut qscore_error: HashMap<u8, u64> = HashMap::new();
         for (value, qual_list) in value_map {
             for qual_string in qual_list {
                 if qual_string.is_empty() {
@@ -326,6 +326,7 @@ impl KVmerSet {
                 }
             }
         }
+        (qscore_correct, qscore_error)
     }
 
     pub fn get_stats(&self, threshold: u32) -> KVmerStats {
@@ -349,6 +350,8 @@ impl KVmerSet {
         // Quality-score calibration accumulators
         let mut qscore_correct: HashMap<u8, u64> = HashMap::new();
         let mut qscore_error: HashMap<u8, u64> = HashMap::new();
+        let mut qscore_correct_per_key: Vec<HashMap<u8, u64>> = Vec::new();
+        let mut qscore_error_per_key: Vec<HashMap<u8, u64>> = Vec::new();
 
         for (key, value_map) in &self.key_value_qual_map {
 
@@ -408,7 +411,9 @@ impl KVmerSet {
             //println!("{:?}", error_positions);
 
             // quality-score calibration for this key
-            Self::accumulate_qscore_calibration(max_value, self.value_size, value_map, &mut qscore_correct, &mut qscore_error);
+            let (key_correct, key_error) = Self::accumulate_qscore_calibration(max_value, self.value_size, value_map);
+            for (&q, &c) in &key_correct { *qscore_correct.entry(q).or_insert(0) += c; }
+            for (&q, &e) in &key_error   { *qscore_error.entry(q).or_insert(0)   += e; }
 
             // update the vectors
             keys.push(*key);
@@ -417,6 +422,8 @@ impl KVmerSet {
             error_counts.push(error_count_map);
             total_counts.push(sum_count);
             neighbor_counts.push(num_neighbors);
+            qscore_correct_per_key.push(key_correct);
+            qscore_error_per_key.push(key_error);
         }
 
         KVmerStats {
@@ -431,6 +438,8 @@ impl KVmerSet {
             consensus_up_to_v_counts,
             qscore_correct,
             qscore_error,
+            qscore_correct_per_key,
+            qscore_error_per_key,
         }
     }
 
@@ -456,6 +465,8 @@ impl KVmerSet {
         // Quality-score calibration accumulators
         let mut qscore_correct: HashMap<u8, u64> = HashMap::new();
         let mut qscore_error: HashMap<u8, u64> = HashMap::new();
+        let mut qscore_correct_per_key: Vec<HashMap<u8, u64>> = Vec::new();
+        let mut qscore_error_per_key: Vec<HashMap<u8, u64>> = Vec::new();
 
         // for debugging: the number of k-mers that the read set shares with the reference
         let mut shared_kmer_count: u32 = 0;
@@ -527,7 +538,9 @@ impl KVmerSet {
             //println!("{:?}", error_positions);
 
             // quality-score calibration for this key
-            Self::accumulate_qscore_calibration(consensus_value, self.value_size, value_map, &mut qscore_correct, &mut qscore_error);
+            let (key_correct, key_error) = Self::accumulate_qscore_calibration(consensus_value, self.value_size, value_map);
+            for (&q, &c) in &key_correct { *qscore_correct.entry(q).or_insert(0) += c; }
+            for (&q, &e) in &key_error   { *qscore_error.entry(q).or_insert(0)   += e; }
 
             // update the vectors
             keys.push(*key);
@@ -536,6 +549,8 @@ impl KVmerSet {
             error_counts.push(error_count_map);
             total_counts.push(sum_count);
             neighbor_counts.push(num_neighbors);
+            qscore_correct_per_key.push(key_correct);
+            qscore_error_per_key.push(key_error);
         }
 
         //println!("Total count of kvmers that match reference: {}", shared_kmer_count);
@@ -554,6 +569,8 @@ impl KVmerSet {
             consensus_up_to_v_counts,
             qscore_correct,
             qscore_error,
+            qscore_correct_per_key,
+            qscore_error_per_key,
         }
 
 
