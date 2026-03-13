@@ -13,7 +13,8 @@ use rand::Rng;
 pub struct ErrorSpectrum {
     pub estimated_lambda: (f32, (f32, f32)),
     pub estimated_beta: (f32, (f32, f32)),
-    pub average_error_rate: (f32, (f32, f32)),
+    pub per_base_error_rate: (f32, (f32, f32)),
+    pub effective_error_rate: (f32, (f32, f32)),
 
     pub key_coverage: (f32, (f32, f32)),
     pub estimated_coverage: (f32, (f32, f32)),
@@ -416,7 +417,7 @@ impl ErrorAnalyzer {
      * E[T] = sum_{t=1}^{\infty} P(T >= t) = sum_{t=1}^{\infty} exp(-lambda * t^beta)
      * approximate the sum until the terms are small enough
      */
-    fn estimate_average_error_rate(&self, lambda: f32, beta: f32) -> f32 {
+    fn estimate_effective_error_rate(&self, lambda: f32, beta: f32) -> f32 {
         let mut expected_t = 0.0;
         let epsilon: f32 = 1e-6;
         let max_iterations: usize = 10000;
@@ -599,7 +600,7 @@ impl ErrorAnalyzer {
             let (lambda, beta) = self.fit_hazard_ratio(&hazard_ratios);
             lambda_list.push(lambda);
             beta_list.push(beta);
-            error_rate_list.push(self.estimate_average_error_rate(lambda, beta));
+            error_rate_list.push(self.estimate_effective_error_rate(lambda, beta));
         }
 
         lambda_list.sort_by(f32::total_cmp);
@@ -822,7 +823,9 @@ impl ErrorAnalyzer {
         // estimate hazard ratio parameters
         let (lambda, beta, hazard_ratio, x_sum, y_sum) = self.estimate_hazard_ratio(stats, &indices);
         let (lambda_ci, beta_ci, hazard_ratio_ci, error_rate_ci) = self.estimate_hazard_ratio_confidence_interval(stats, &indices);
-        let average_error_rate = self.estimate_average_error_rate(lambda, beta);
+        let effective_error_rate = self.estimate_effective_error_rate(lambda, beta);
+        let per_base_error_rate = 1.0 - (-lambda).exp();
+        let per_base_error_rate_ci = (1.0 - (-(lambda_ci.0)).exp(), 1.0 - (-(lambda_ci.1)).exp());
 
         if let Some(hazard_ratio_output) = &self.args.hazard_rate {
             use std::fs::File;
@@ -851,7 +854,8 @@ impl ErrorAnalyzer {
         ErrorSpectrum {
             estimated_lambda: (lambda, lambda_ci),
             estimated_beta: (beta, beta_ci),
-            average_error_rate: (average_error_rate, error_rate_ci),
+            per_base_error_rate: (per_base_error_rate, per_base_error_rate_ci),
+            effective_error_rate: (effective_error_rate, error_rate_ci),
 
             key_coverage: key_coverage,
             estimated_coverage: estimated_coverage,
@@ -873,8 +877,9 @@ pub fn spectrum_to_str(spectrum: &ErrorSpectrum, bidirectional: bool) -> String 
         panic!("The bidirectional flag does not match the spectrum data.");
     }
 
-    // average error rate
-    result.push_str(&format!("{:.6},{:.6}~{:.6},", spectrum.average_error_rate.0, (spectrum.average_error_rate.1).0, (spectrum.average_error_rate.1).1));
+    // per-base and effective error rate
+    result.push_str(&format!("{:.6},{:.6}~{:.6},", spectrum.per_base_error_rate.0, (spectrum.per_base_error_rate.1).0, (spectrum.per_base_error_rate.1).1));
+    result.push_str(&format!("{:.6},{:.6}~{:.6},", spectrum.effective_error_rate.0, (spectrum.effective_error_rate.1).0, (spectrum.effective_error_rate.1).1));
 
     // hazard ratio parameters a and b
     result.push_str(&format!("{:.6},{:.6}~{:.6},", spectrum.estimated_lambda.0, (spectrum.estimated_lambda.1).0, (spectrum.estimated_lambda.1).1));
@@ -904,7 +909,8 @@ pub fn spectrum_to_str(spectrum: &ErrorSpectrum, bidirectional: bool) -> String 
 pub fn header_str(bidirectional: bool) -> String {
     let mut result = String::new();
 
-    result.push_str("average_error_rate,average_error_rate_5-95th_percentile,");
+    result.push_str("per_base_error_rate,per_base_error_rate_5-95th_percentile,");
+    result.push_str("effective_error_rate,effective_error_rate_5-95th_percentile,");
     result.push_str("lambda,lambda_5-95th_percentile,");
     result.push_str("beta,beta_5-95th_percentile,");
 
