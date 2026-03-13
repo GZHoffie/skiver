@@ -45,6 +45,10 @@ skiver analyze [sequence_file_1] [sequence_file_2] ... > report.csv
 
 # If a reference genome is provided
 skiver analyze [sequence_file_1] [sequence_file_2] ... -r [reference_file] > report.csv
+
+# Perform Phred score calibration
+skiver calibrate sequences.kvmer > calibration_report.csv
+skiver calibrate [sequence_file_1] [sequence_file_2] ... > calibration_report.csv
 ```
 
 The input sequence files can be represented using regex. Gzipped files are also accepted.
@@ -55,11 +59,12 @@ For the full set of available options, use the help function,
 ```bash
 skiver sketch -h
 skiver analyze -h
+skiver calibrate -h
 ```
 
 ### Interpreting the results
 
-The output csv has the following format
+The output `report.csv` has the following format
 
 ```
 lambda,lambda_5-95th_percentile,beta,beta_5-95th_percentile,key_median_coverage,key_coverage_5-95th_percentile,true_median_coverage,true_coverage_5-95th_percentile,A[C>A]A,A[C>A]C,A[C>A]G...
@@ -85,6 +90,9 @@ skiver sketch ./ERR3152366.fastq.gz -o ERR3152366.kvmer
 
 # Run skiver analyze, with all the verbose output
 skiver analyze ERR3152366.kvmer --hazard-rate hazard_rate.csv -o verbose_output.csv > skiver_report.csv
+
+# Perform Phred score calibration
+skiver calibrate ERR3152366.kvmer > calibration_report.csv
 ```
 
 Here, `hazard_rate.csv` contains the estimated hazard rate over a range of `t`, `verbose_output.csv` contains the key and the consensus values of the sketched (k,v)-mers (mainly for debugging), and `skiver_report.csv` contains the estimated error rates/spectra.
@@ -138,7 +146,17 @@ Here, `hazard_rate.csv` contains the estimated hazard rate over a range of `t`, 
     <img src="./figures/coverage.png"/>
   </p> 
 
+- **Quality score calibration** (beta)
 
+  ```bash
+  python ./scripts/plot_qscore_calibration.py calibration_report.csv ./figures/qscore_calibrate.png --log
+  ```
+
+  will plot the theoretical and empirical error rates of the Phred scores in log scale (if included the `--log` option), along with a histogram of the Phred scores.
+
+   <p align="center">
+    <img src="./figures/qscore_calibrate.png"/>
+  </p> 
 
 
 

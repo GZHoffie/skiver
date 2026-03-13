@@ -77,8 +77,8 @@ if __name__ == "__main__":
     )
     parser.add_argument("calibration_file",
                         help="CSV produced by `skiver calibrate` "
-                             "(columns: qscore, num_correct, num_error, error_rate, "
-                             "5th_percentile, 95th_percentile).")
+                             "(columns: qscore, empirical_qscore, num_correct, num_error, "
+                             "error_rate, 5th_percentile, 95th_percentile).")
     parser.add_argument("output_file", help="Path to save the output plot image.")
     parser.add_argument("--log", action="store_true",
                         help="Use logarithmic scale for the y-axis (default: False).")

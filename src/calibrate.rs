@@ -56,8 +56,9 @@ pub fn calibrate(args: CalibrateArgs) {
 
     let results = analyzer.calibrate_qscores(&stats);
 
-    println!("qscore,num_correct,num_error,error_rate,5th_percentile,95th_percentile");
+    println!("qscore,empirical_qscore,num_correct,num_error,error_rate,5th_percentile,95th_percentile");
     for (q, correct, error, error_rate, lower, upper) in results {
-        println!("{},{},{},{:.6},{:.6},{:.6}", q, correct, error, error_rate, lower, upper);
+        let empirical_q = if error_rate > 0.0 { -10.0 * error_rate.log10() } else { f64::INFINITY };
+        println!("{},{:.4},{},{},{:.6},{:.6},{:.6}", q, empirical_q, correct, error, error_rate, lower, upper);
     }
 }
