@@ -159,7 +159,7 @@ pub unsafe fn _shift_mm256_right_by_k(kmer: __m256i, k: usize) -> __m256i {
  * The k-mers are extracted from both the forward and reverse strands.
  */
 #[target_feature(enable = "avx2")]
-pub unsafe fn extract_markers_avx2_masked(string: &[u8], keys_vec: &mut Vec<u64>, values_vec: &mut Vec<u64>, c: usize, k: usize, v: usize, bidirectional: bool) { unsafe {
+pub unsafe fn extract_markers_avx2_masked(string: &[u8], keys_vec: &mut Vec<u64>, values_vec: &mut Vec<u64>, start_index_vec: &mut Vec<u32>, is_forward_vec: &mut Vec<bool>, c: usize, k: usize, v: usize, bidirectional: bool) { unsafe {
     let t = k + v;
 
     if string.len() < t {
@@ -249,6 +249,7 @@ pub unsafe fn extract_markers_avx2_masked(string: &[u8], keys_vec: &mut Vec<u64>
 
     let mm256_key_mask = _mm256_set_epi64x(key_mask, key_mask, key_mask, key_mask);
     let mm256_value_mask = _mm256_set_epi64x(value_mask, value_mask, value_mask, value_mask);
+    let offsets = [0usize, len, 2 * len, 3 * len];
 
     // iterate over the string
     for i in k + v - 1..(len + t - 1) {
@@ -309,18 +310,26 @@ pub unsafe fn extract_markers_avx2_masked(string: &[u8], keys_vec: &mut Vec<u64>
         if h1 < threshold_marker {
             keys_vec.push(key1 as u64);
             values_vec.push(value1 as u64);
+            start_index_vec.push((offsets[0] + i - v + 1) as u32);
+            is_forward_vec.push(true);
         }
         if h2 < threshold_marker {
             keys_vec.push(key2 as u64);
             values_vec.push(value2 as u64);
+            start_index_vec.push((offsets[1] + i - v + 1) as u32);
+            is_forward_vec.push(true);
         }
         if h3 < threshold_marker {
             keys_vec.push(key3 as u64);
             values_vec.push(value3 as u64);
+            start_index_vec.push((offsets[2] + i - v + 1) as u32);
+            is_forward_vec.push(true);
         }
         if h4 < threshold_marker {
             keys_vec.push(key4 as u64);
             values_vec.push(value4 as u64);
+            start_index_vec.push((offsets[3] + i - v + 1) as u32);
+            is_forward_vec.push(true);
         }
 
         if bidirectional {
@@ -343,18 +352,26 @@ pub unsafe fn extract_markers_avx2_masked(string: &[u8], keys_vec: &mut Vec<u64>
             if hr1 < threshold_marker {
                 keys_vec.push(rkey1 as u64);
                 values_vec.push(rvalue1 as u64);
+                start_index_vec.push((offsets[0] + i - k - v + 1) as u32);
+                is_forward_vec.push(false);
             }
             if hr2 < threshold_marker {
                 keys_vec.push(rkey2 as u64);
                 values_vec.push(rvalue2 as u64);
+                start_index_vec.push((offsets[1] + i - k - v + 1) as u32);
+                is_forward_vec.push(false);
             }
             if hr3 < threshold_marker {
                 keys_vec.push(rkey3 as u64);
                 values_vec.push(rvalue3 as u64);
+                start_index_vec.push((offsets[2] + i - k - v + 1) as u32);
+                is_forward_vec.push(false);
             }
             if hr4 < threshold_marker {
                 keys_vec.push(rkey4 as u64);
                 values_vec.push(rvalue4 as u64);
+                start_index_vec.push((offsets[3] + i - k - v + 1) as u32);
+                is_forward_vec.push(false);
             }
         }
     }
@@ -371,7 +388,7 @@ pub unsafe fn extract_markers_avx2_masked(string: &[u8], keys_vec: &mut Vec<u64>
  *     in *reversed* order (position 0 of RC value → original position j*lane_len + i-k).
  */
 #[target_feature(enable = "avx2")]
-pub unsafe fn extract_markers_avx2_masked_with_qual(string: &[u8], qual: &[u8], keys_vec: &mut Vec<u64>, values_vec: &mut Vec<u64>, quals_vec: &mut Vec<Vec<u8>>, c: usize, k: usize, v: usize, bidirectional: bool) { unsafe {
+pub unsafe fn extract_markers_avx2_masked_with_qual(string: &[u8], qual: &[u8], keys_vec: &mut Vec<u64>, values_vec: &mut Vec<u64>, quals_vec: &mut Vec<Vec<u8>>, start_index_vec: &mut Vec<u32>, is_forward_vec: &mut Vec<bool>, c: usize, k: usize, v: usize, bidirectional: bool) { unsafe {
     let t = k + v;
 
     if string.len() < t {
@@ -504,21 +521,29 @@ pub unsafe fn extract_markers_avx2_masked_with_qual(string: &[u8], qual: &[u8], 
             keys_vec.push(key1);
             values_vec.push(value1);
             quals_vec.push(qual[offsets[0] + i - v + 1..=offsets[0] + i].to_vec());
+            start_index_vec.push((offsets[0] + i - v + 1) as u32);
+            is_forward_vec.push(true);
         }
         if h2 < threshold_marker {
             keys_vec.push(key2);
             values_vec.push(value2);
             quals_vec.push(qual[offsets[1] + i - v + 1..=offsets[1] + i].to_vec());
+            start_index_vec.push((offsets[1] + i - v + 1) as u32);
+            is_forward_vec.push(true);
         }
         if h3 < threshold_marker {
             keys_vec.push(key3);
             values_vec.push(value3);
             quals_vec.push(qual[offsets[2] + i - v + 1..=offsets[2] + i].to_vec());
+            start_index_vec.push((offsets[2] + i - v + 1) as u32);
+            is_forward_vec.push(true);
         }
         if h4 < threshold_marker {
             keys_vec.push(key4);
             values_vec.push(value4);
             quals_vec.push(qual[offsets[3] + i - v + 1..=offsets[3] + i].to_vec());
+            start_index_vec.push((offsets[3] + i - v + 1) as u32);
+            is_forward_vec.push(true);
         }
 
         if bidirectional {
@@ -543,21 +568,29 @@ pub unsafe fn extract_markers_avx2_masked_with_qual(string: &[u8], qual: &[u8], 
                 keys_vec.push(rkey1);
                 values_vec.push(rvalue1);
                 quals_vec.push((0..v).map(|p| qual[offsets[0] + i - k - p]).collect());
+                start_index_vec.push((offsets[0] + i - k - v + 1) as u32);
+                is_forward_vec.push(false);
             }
             if hr2 < threshold_marker {
                 keys_vec.push(rkey2);
                 values_vec.push(rvalue2);
                 quals_vec.push((0..v).map(|p| qual[offsets[1] + i - k - p]).collect());
+                start_index_vec.push((offsets[1] + i - k - v + 1) as u32);
+                is_forward_vec.push(false);
             }
             if hr3 < threshold_marker {
                 keys_vec.push(rkey3);
                 values_vec.push(rvalue3);
                 quals_vec.push((0..v).map(|p| qual[offsets[2] + i - k - p]).collect());
+                start_index_vec.push((offsets[2] + i - k - v + 1) as u32);
+                is_forward_vec.push(false);
             }
             if hr4 < threshold_marker {
                 keys_vec.push(rkey4);
                 values_vec.push(rvalue4);
                 quals_vec.push((0..v).map(|p| qual[offsets[3] + i - k - p]).collect());
+                start_index_vec.push((offsets[3] + i - k - v + 1) as u32);
+                is_forward_vec.push(false);
             }
         }
     }

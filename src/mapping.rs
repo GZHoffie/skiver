@@ -83,15 +83,21 @@ impl KmerSet {
             if is_x86_feature_detected!("avx2") {
                 use crate::avx2_seeding::*;
                 unsafe {
-                    extract_markers_avx2_masked(&string[start..end], kmer_vec, _value_vec, c, self.key_size as usize, 0 as usize, bidirectional);
+                    let mut _si: Vec<u32> = Vec::new();
+                    let mut _if: Vec<bool> = Vec::new();
+                    extract_markers_avx2_masked(&string[start..end], kmer_vec, _value_vec, &mut _si, &mut _if, c, self.key_size as usize, 0 as usize, bidirectional);
                 }
             } else {
-                fmh_seeds_masked(&string[start..end], kmer_vec, _value_vec, c, self.key_size as usize, 0 as usize, bidirectional);
+                let mut _si: Vec<u32> = Vec::new();
+                let mut _if: Vec<bool> = Vec::new();
+                fmh_seeds_masked(&string[start..end], kmer_vec, _value_vec, &mut _si, &mut _if, c, self.key_size as usize, 0 as usize, bidirectional);
             }
         }
         #[cfg(not(target_arch = "x86_64"))]
         {
-            fmh_seeds_masked(&string[start..end], kmer_vec, _value_vec, c, self.key_size as usize, 0 as usize, bidirectional);
+            let mut _si: Vec<u32> = Vec::new();
+            let mut _if: Vec<bool> = Vec::new();
+            fmh_seeds_masked(&string[start..end], kmer_vec, _value_vec, &mut _si, &mut _if, c, self.key_size as usize, 0 as usize, bidirectional);
         }
     }
 

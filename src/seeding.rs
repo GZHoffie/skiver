@@ -82,6 +82,8 @@ pub fn fmh_seeds_masked(
     string: &[u8],
     keys_vec: &mut Vec<u64>,
     values_vec: &mut Vec<u64>,
+    start_index_vec: &mut Vec<u32>,
+    is_forward_vec: &mut Vec<bool>,
     c: usize,
     k: usize,
     v: usize,
@@ -157,6 +159,8 @@ pub fn fmh_seeds_masked(
         if hash_f < threshold_marker {
             keys_vec.push(rolling_key_f as u64);
             values_vec.push(rolling_value_f as u64);
+            start_index_vec.push((i - v + 1) as u32);
+            is_forward_vec.push(true);
         }
 
         if bidirectional {
@@ -173,13 +177,15 @@ pub fn fmh_seeds_masked(
             rolling_key_r >>= 2;
             rolling_key_r |= nuc_r << (2 * (k - 1));
             rolling_key_r &= key_mask;
-            
 
-            
+
+
             let hash_r = mm_hash64_masked(rolling_key_r, None);
             if hash_r < threshold_marker {
                 keys_vec.push(rolling_key_r as u64);
                 values_vec.push(rolling_value_r as u64);
+                start_index_vec.push((i - k - v + 1) as u32);
+                is_forward_vec.push(false);
             }
         }
     }
@@ -200,6 +206,8 @@ pub fn fmh_seeds_masked_with_qual(
     keys_vec: &mut Vec<u64>,
     values_vec: &mut Vec<u64>,
     quals_vec: &mut Vec<Vec<u8>>,
+    start_index_vec: &mut Vec<u32>,
+    is_forward_vec: &mut Vec<bool>,
     c: usize,
     k: usize,
     v: usize,
@@ -267,6 +275,8 @@ pub fn fmh_seeds_masked_with_qual(
             values_vec.push(rolling_value_f);
             // Value covers read positions [i-v+1, i]; position 0 = i-v+1.
             quals_vec.push(qual[i - v + 1..=i].to_vec());
+            start_index_vec.push((i - v + 1) as u32);
+            is_forward_vec.push(true);
         }
 
         if bidirectional {
@@ -289,6 +299,8 @@ pub fn fmh_seeds_masked_with_qual(
                 // Quality string is in RC-value-position order: p=0 → qual[i-k].
                 let rc_qual: Vec<u8> = (0..v).map(|p| qual[i - k - p]).collect();
                 quals_vec.push(rc_qual);
+                start_index_vec.push((i - k - v + 1) as u32);
+                is_forward_vec.push(false);
             }
         }
     }
