@@ -184,7 +184,7 @@ pub fn fmh_seeds_masked(
             if hash_r < threshold_marker {
                 keys_vec.push(rolling_key_r as u64);
                 values_vec.push(rolling_value_r as u64);
-                start_index_vec.push((i - k - v + 1) as u32);
+                start_index_vec.push((i - k + 1) as u32);
                 is_forward_vec.push(false);
             }
         }
@@ -299,7 +299,7 @@ pub fn fmh_seeds_masked_with_qual(
                 // Quality string is in RC-value-position order: p=0 → qual[i-k].
                 let rc_qual: Vec<u8> = (0..v).map(|p| qual[i - k - p]).collect();
                 quals_vec.push(rc_qual);
-                start_index_vec.push((i - k - v + 1) as u32);
+                start_index_vec.push((i - k + 1) as u32);
                 is_forward_vec.push(false);
             }
         }
