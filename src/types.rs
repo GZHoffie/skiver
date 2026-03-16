@@ -249,6 +249,14 @@ pub const ALL_OPERATIONS_CANONICAL: [EditOperation; 10] = [
     EditOperation::T_,
 ];
 
+#[derive(Debug, Clone, Copy)]
+pub struct NeighborInfo {
+    pub op: EditOperation,
+    pub prev_base: u8,
+    pub next_base: u8,
+    pub position: u8,
+}
+
 pub fn sbs96_str(op: &(EditOperation, u8, u8)) -> String {
     format!("{}[{}]{}", SEQ_TO_CHAR[op.1 as usize], op.0, SEQ_TO_CHAR[op.2 as usize])
 }

@@ -441,12 +441,12 @@ impl ErrorAnalyzer {
     pub fn find_hazard_ratio_outliers(&self, stats: &KVmerStats) -> Vec<usize> {
 
         let mut res = vec![true; stats.consensus_counts.len()];
-        let mut x: &Vec<u32>;
-        let mut y: &Vec<u32>;
-        // [TODO] Return also the number of outliers for each v
-        //let mut num_outliers = [0; stats.consensus_counts.len()];
-        
+
+        // Compute hazard ratios for each v independently
+        let mut per_v_ratios: Vec<Vec<f32>> = Vec::new();
         for v in 1..=(stats.v - self.args.ignore_last_hazard_ratios as u8) {
+            let x: &Vec<u32>;
+            let y: &Vec<u32>;
             if v - 1 == 0 {
                 x = &stats.total_counts;
                 y = &stats.consensus_up_to_v_counts[0];
@@ -457,25 +457,30 @@ impl ErrorAnalyzer {
             let ratio = x.iter().zip(y.iter())
                 .map(|(&xi, &yi)| if xi != 0 { yi as f32 / xi as f32 } else { 1. })
                 .collect::<Vec<f32>>();
+            per_v_ratios.push(ratio);
+        }
 
-            // sort the ratios and exclude the ratios that = 1., and find the IQR
-            let mut sorted_ratio = ratio.clone();
-            sorted_ratio.sort_by(f32::total_cmp);
-            // exclude ratios that are exactly 1.
-            let filtered_ratio: Vec<f32> = sorted_ratio.into_iter().filter(|&r| r < 1.).collect();
-            let n = filtered_ratio.len();
-            if n == 0 {
-                continue;
-            }
-            let q1 = filtered_ratio[n / 4];
-            let q3 = filtered_ratio[(3 * n) / 4];
+        // Join together hazard rates for all v to compute a single IQR threshold
+        let mut all_ratios: Vec<f32> = per_v_ratios.iter()
+            .flat_map(|r| r.iter().copied())
+            .filter(|&r| r < 1.)
+            .collect();
+        all_ratios.sort_by(f32::total_cmp);
+
+        let n = all_ratios.len();
+        if n > 0 {
+            let q1 = all_ratios[n / 4];
+            let q3 = all_ratios[(3 * n) / 4];
             let iqr = q3 - q1;
-
             let lower_bound = q1 - self.args.outlier_threshold * iqr;
-            for (i, &r) in ratio.iter().enumerate() {
-                if r < lower_bound {
-                    // mark as outlier
-                    res[i] = false;
+
+            // Exclude outliers: a data point is excluded if it falls below the
+            // combined lower bound in any v
+            for ratios in &per_v_ratios {
+                for (i, &r) in ratios.iter().enumerate() {
+                    if r < lower_bound {
+                        res[i] = false;
+                    }
                 }
             }
         }
@@ -483,7 +488,7 @@ impl ErrorAnalyzer {
         let indices: Vec<usize> = res.iter().enumerate()
                                 .filter_map(|(i, &is_inlier)| if is_inlier { Some(i) } else { None })
                                 .collect();
-        
+
         info!("Identified {} inliers out of {} data points based on hazard ratios ({}%).", indices.len(), res.len(), (indices.len() as f32 / res.len() as f32) * 100.0);
 
         indices

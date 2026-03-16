@@ -5,12 +5,12 @@ use std::collections::HashMap;
 
 /**
  * Get all neighbors (kmers with edit distance 1) of a given kmer value
- * Returns a hashmap of neighbor kmer value to (EditOperation, previous_base, next_base)
+ * Returns a hashmap of neighbor kmer value to NeighborInfo
  */
-pub fn _get_neighbors(value: u64, value_size: u8, bidirectional: bool) -> HashMap<u64, (EditOperation, u8, u8)> {
+pub fn _get_neighbors(value: u64, value_size: u8, bidirectional: bool) -> HashMap<u64, NeighborInfo> {
     // get all the values with edit distance 1 from the input value
 
-    let mut neighbors: HashMap<u64, (EditOperation, u8, u8)> = HashMap::new();
+    let mut neighbors: HashMap<u64, NeighborInfo> = HashMap::new();
     let bases = [0, 1, 2, 3]; // A, C, G, T
 
     for i in 0..value_size {
@@ -25,14 +25,19 @@ pub fn _get_neighbors(value: u64, value_size: u8, bidirectional: bool) -> HashMa
         } else {
             ((value >> (shift - 2)) & 0b11) as u8
         };
-        
+
         // Substitutions
         for &b in &bases {
             let current_base = (value >> shift) & 0b11;
 
             if b != current_base {
                 let neighbor = (value & !(0b11 << shift)) | (b << shift);
-                neighbors.insert(neighbor, (BASES_TO_SUBSTITUTION[current_base as usize][b as usize].unwrap(), previous_base, next_base));
+                neighbors.insert(neighbor, NeighborInfo {
+                    op: BASES_TO_SUBSTITUTION[current_base as usize][b as usize].unwrap(),
+                    prev_base: previous_base,
+                    next_base,
+                    position: i,
+                });
             }
         }
 
@@ -41,34 +46,40 @@ pub fn _get_neighbors(value: u64, value_size: u8, bidirectional: bool) -> HashMa
             if shift == 0 && b == (value >> shift) & 0b11 {
                 continue; // skip the original base for the first position
             }
-            
+
             let left_part = (value >> (shift + 2)) << ((shift + 2));
             let right_part = value & ((1 << (shift + 2)) - 1);
             let neighbor_insert = left_part | (b << shift) | (right_part >> 2);
             neighbors.entry(neighbor_insert)
-                .and_modify(|(op, _prev, _next)| {
-                    if *op != BASES_TO_INSERTION[b as usize].unwrap() {
-                        *op = EditOperation::AMBIGUOUS
+                .and_modify(|info| {
+                    if info.op != BASES_TO_INSERTION[b as usize].unwrap() {
+                        info.op = EditOperation::AMBIGUOUS
                     }
                 })
-                .or_insert(
-                    (BASES_TO_INSERTION[b as usize].unwrap(), previous_base, next_base)
-                );
-            
-            
-            
+                .or_insert(NeighborInfo {
+                    op: BASES_TO_INSERTION[b as usize].unwrap(),
+                    prev_base: previous_base,
+                    next_base,
+                    position: i,
+                });
+
+
+
             let right_part = value & ((1 << shift) - 1);
             let neighbor_delete = left_part | (right_part << 2) | b;
             let original_base = (value >> shift) & 0b11;
             neighbors.entry(neighbor_delete)
-                .and_modify(|(op, _prev, _next)| 
-                    if *op != BASES_TO_DELETION[original_base as usize].unwrap() {
-                        *op = EditOperation::AMBIGUOUS
+                .and_modify(|info|
+                    if info.op != BASES_TO_DELETION[original_base as usize].unwrap() {
+                        info.op = EditOperation::AMBIGUOUS
                     }
                 )
-                .or_insert(
-                    (BASES_TO_DELETION[original_base as usize].unwrap(), previous_base, next_base)
-                );
+                .or_insert(NeighborInfo {
+                    op: BASES_TO_DELETION[original_base as usize].unwrap(),
+                    prev_base: previous_base,
+                    next_base,
+                    position: i,
+                });
         }
     }
 
@@ -91,8 +102,8 @@ pub fn _show_neighbors(kmer: u64, k: u8, bidirectional: bool) {
     // for debugging: print all the neighbors of a value
 
     let neighbors = _get_neighbors(kmer, k, bidirectional);
-    for (neighbor, op) in neighbors {
-        println!("Neighbor: {}, Operation: {}", _kmer_to_string(neighbor, k), sbs96_str(&op));
+    for (neighbor, info) in neighbors {
+        println!("Neighbor: {}, Operation: {}", _kmer_to_string(neighbor, k), sbs96_str(&(info.op, info.prev_base, info.next_base)));
     }
 }
 

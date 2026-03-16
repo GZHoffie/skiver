@@ -399,11 +399,11 @@ impl KVmerSet {
             for (value, qual_list) in value_map {
                 let count = qual_list.len() as u32;
                 if *value != max_value && neighbors.contains_key(value) {
-                    let (op, prev_base, next_base) = neighbors.get(value).unwrap();
-                    //println!("Value: {}, Operation: {:?}, Position: {}", self.to_value_string(*value), op, pos);
+                    let info = neighbors.get(value).unwrap();
+                    //println!("Value: {}, Operation: {:?}, Position: {}", self.to_value_string(*value), info.op, info.position);
 
                     // update the error count map
-                    let entry = error_count_map.entry((*op, *prev_base, *next_base)).or_insert(0);
+                    let entry = error_count_map.entry((info.op, info.prev_base, info.next_base)).or_insert(0);
                     *entry += count;
                     num_neighbors += count;
                 }
@@ -526,11 +526,11 @@ impl KVmerSet {
             for (value, qual_list) in value_map {
                 let count = qual_list.len() as u32;
                 if *value != consensus_value && neighbors.contains_key(value) {
-                    let (op, prev_base, next_base) = neighbors.get(value).unwrap();
-                    //println!("Value: {}, Operation: {:?}, Position: {}", self.to_value_string(*value), op, pos);
+                    let info = neighbors.get(value).unwrap();
+                    //println!("Value: {}, Operation: {:?}, Position: {}", self.to_value_string(*value), info.op, info.position);
 
                     // update the error count map
-                    let entry = error_count_map.entry((*op, *prev_base, *next_base)).or_insert(0);
+                    let entry = error_count_map.entry((info.op, info.prev_base, info.next_base)).or_insert(0);
                     *entry += count;
                     num_neighbors += count;
                 }
