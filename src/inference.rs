@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 
 use crate::types::*;
+use crate::kvmer::KVmerStats;
 use crate::constants::*;
 use crate::cmdline::AnalyzeArgs;
 use crate::huber::*;
@@ -449,7 +450,7 @@ impl ErrorAnalyzer {
      */
     pub fn find_hazard_ratio_outliers(&self, stats: &KVmerStats) -> Vec<usize> {
 
-        let mut res = vec![true; stats.consensus_counts.len()];
+        let mut res = vec![true; stats.error_summary.consensus_counts.len()];
 
         // Compute hazard ratios for each v independently
         let mut per_v_ratios: Vec<Vec<f32>> = Vec::new();
@@ -457,11 +458,11 @@ impl ErrorAnalyzer {
             let x: &Vec<u32>;
             let y: &Vec<u32>;
             if v - 1 == 0 {
-                x = &stats.total_counts;
-                y = &stats.consensus_up_to_v_counts[0];
+                x = &stats.error_summary.total_counts;
+                y = &stats.error_summary.consensus_up_to_v_counts[0];
             } else {
-                x = &stats.consensus_up_to_v_counts[(v - 1 - 1) as usize];
-                y = &stats.consensus_up_to_v_counts[(v - 1) as usize];
+                x = &stats.error_summary.consensus_up_to_v_counts[(v - 1 - 1) as usize];
+                y = &stats.error_summary.consensus_up_to_v_counts[(v - 1) as usize];
             }
             let ratio = x.iter().zip(y.iter())
                 .map(|(&xi, &yi)| if xi != 0 { yi as f32 / xi as f32 } else { 1. })
@@ -513,7 +514,7 @@ impl ErrorAnalyzer {
         let mut error_counts: HashMap<(EditOperation, u8, u8), u32> = HashMap::new();
 
         indices.iter().for_each(|&i| {
-            for (op, count_map) in stats.error_counts[i].iter() {
+            for (op, count_map) in stats.error_spectrum.error_counts[i].iter() {
                 let count = error_counts.entry(*op).or_insert(0);
                 *count += *count_map;
             }
@@ -598,11 +599,11 @@ impl ErrorAnalyzer {
 
             for v in 1..=(stats.v - self.args.ignore_last_hazard_ratios as u8) {
                 if v - 1 == 0 {
-                    x = &stats.total_counts;
-                    y = &stats.consensus_up_to_v_counts[0];
+                    x = &stats.error_summary.total_counts;
+                    y = &stats.error_summary.consensus_up_to_v_counts[0];
                 } else {
-                    x = &stats.consensus_up_to_v_counts[(v - 1 - 1) as usize];
-                    y = &stats.consensus_up_to_v_counts[(v - 1) as usize];
+                    x = &stats.error_summary.consensus_up_to_v_counts[(v - 1 - 1) as usize];
+                    y = &stats.error_summary.consensus_up_to_v_counts[(v - 1) as usize];
                 }
 
                 let h = self.calculate_ratio(x, y, &indices_sample);
@@ -670,11 +671,11 @@ impl ErrorAnalyzer {
 
         for v in 1..=(stats.v - self.args.ignore_last_hazard_ratios as u8) {
             if v - 1 == 0 {
-                x = &stats.total_counts;
-                y = &stats.consensus_up_to_v_counts[0];
+                x = &stats.error_summary.total_counts;
+                y = &stats.error_summary.consensus_up_to_v_counts[0];
             } else {
-                x = &stats.consensus_up_to_v_counts[(v - 1 - 1) as usize];
-                y = &stats.consensus_up_to_v_counts[(v - 1) as usize];
+                x = &stats.error_summary.consensus_up_to_v_counts[(v - 1 - 1) as usize];
+                y = &stats.error_summary.consensus_up_to_v_counts[(v - 1) as usize];
             }
 
             /*
@@ -711,7 +712,7 @@ impl ErrorAnalyzer {
     }
 
     pub fn key_coverage(&self, stats: &KVmerStats, indices: &Vec<usize>) -> (f32, (f32, f32)) {
-        let mut coverages: Vec<u32> = indices.iter().map(|&i| stats.total_counts[i]).collect();
+        let mut coverages: Vec<u32> = indices.iter().map(|&i| stats.error_summary.total_counts[i]).collect();
         coverages.sort_unstable();
         let n = coverages.len();
         if n == 0 {
@@ -759,17 +760,17 @@ impl ErrorAnalyzer {
         let indices = if !self.args.use_all {
             self.find_hazard_ratio_outliers(stats)
         } else {
-            (0..stats.consensus_counts.len()).collect()
+            (0..stats.error_summary.consensus_counts.len()).collect()
         };
 
         // Aggregate qscore counts from inlier keys
         let mut qscore_correct: HashMap<u8, u64> = HashMap::new();
         let mut qscore_error: HashMap<u8, u64> = HashMap::new();
         for &i in &indices {
-            for (&q, &c) in &stats.qscore_correct_per_key[i] {
+            for (&q, &c) in &stats.phred_summary.correct_per_key[i] {
                 *qscore_correct.entry(q).or_insert(0) += c;
             }
-            for (&q, &e) in &stats.qscore_error_per_key[i] {
+            for (&q, &e) in &stats.phred_summary.error_per_key[i] {
                 *qscore_error.entry(q).or_insert(0) += e;
             }
         }
@@ -788,10 +789,10 @@ impl ErrorAnalyzer {
             let mut c_sample: HashMap<u8, u64> = HashMap::new();
             let mut e_sample: HashMap<u8, u64> = HashMap::new();
             for &i in &sample {
-                for (&q, &c) in &stats.qscore_correct_per_key[i] {
+                for (&q, &c) in &stats.phred_summary.correct_per_key[i] {
                     *c_sample.entry(q).or_insert(0) += c;
                 }
-                for (&q, &e) in &stats.qscore_error_per_key[i] {
+                for (&q, &e) in &stats.phred_summary.error_per_key[i] {
                     *e_sample.entry(q).or_insert(0) += e;
                 }
             }
@@ -828,7 +829,7 @@ impl ErrorAnalyzer {
         let indices = if !self.args.use_all {
             self.find_hazard_ratio_outliers(stats)
         } else {
-            (0..stats.consensus_counts.len()).collect()
+            (0..stats.error_summary.consensus_counts.len()).collect()
         };
 
         // estimate SNP rates

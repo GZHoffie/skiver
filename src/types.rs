@@ -24,7 +24,6 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-use std::collections::HashMap;
 use std::fmt;
 use serde::{Serialize, Deserialize};
 
@@ -274,36 +273,6 @@ pub struct NeighborInfo {
 
 pub fn sbs96_str(op: &(EditOperation, u8, u8)) -> String {
     format!("{}[{}]{}", SEQ_TO_CHAR[op.1 as usize], op.0, SEQ_TO_CHAR[op.2 as usize])
-}
-
-/**
- * kv-mer statistics for downstream analysis.
- */
-pub struct KVmerStats {
-    pub k: u8,
-    pub v: u8,
-
-    pub keys: Vec<u64>,
-    pub consensus_values: Vec<u64>,
-
-    pub consensus_counts: Vec<u32>,
-    pub total_counts: Vec<u32>,
-    pub neighbor_counts: Vec<u32>,
-    pub error_counts: Vec<HashMap<(EditOperation, u8, u8), u32>>,
-
-    pub consensus_up_to_v_counts: Vec<Vec<u32>>,
-
-    /// Quality-score calibration: for each Phred score, how many bases agreed
-    /// with the consensus value (walking left-to-right, stopping at first mismatch).
-    pub qscore_correct: HashMap<u8, u64>,
-    /// Quality-score calibration: for each Phred score, how many bases were the
-    /// first mismatch against the consensus (one per value observation at most).
-    pub qscore_error: HashMap<u8, u64>,
-
-    /// Per-key qscore correct counts (parallel to `keys`), enabling index-based filtering.
-    pub qscore_correct_per_key: Vec<HashMap<u8, u64>>,
-    /// Per-key qscore error counts (parallel to `keys`), enabling index-based filtering.
-    pub qscore_error_per_key: Vec<HashMap<u8, u64>>,
 }
 
 

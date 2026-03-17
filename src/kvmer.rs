@@ -12,6 +12,18 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 
 use crate::{seeding::*, types::*, utils::*, constants::*};
+use crate::summary::{ErrorSummary, ErrorSpectrumSummary, PhredScoreSummary};
+
+/// kv-mer statistics for downstream analysis.
+pub struct KVmerStats {
+    pub k: u8,
+    pub v: u8,
+    pub keys: Vec<u64>,
+    pub consensus_values: Vec<u64>,
+    pub error_summary: ErrorSummary,
+    pub error_spectrum: ErrorSpectrumSummary,
+    pub phred_summary: PhredScoreSummary,
+}
 
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
@@ -327,28 +339,11 @@ impl KVmerSet {
     }
 
     pub fn get_stats(&self, threshold: u32) -> KVmerStats {
-        // record the keys and consensus values for output
         let mut keys: Vec<u64> = Vec::new();
         let mut consensus_values: Vec<u64> = Vec::new();
-
-        // count the number of consensus and error kmers
-        let mut consensus_counts: Vec<u32> = Vec::new();
-        // A map that records the number of each type of error for each consensus kmer
-        let mut error_counts: Vec<HashMap<(EditOperation, u8, u8), u32>> = Vec::new();
-        // A vector of size value_size, recording the number of neighbors up to each position
-        let mut consensus_up_to_v_counts: Vec<Vec<u32>> = Vec::new();
-        for _v in 1..=self.value_size {
-            consensus_up_to_v_counts.push(Vec::new());
-        }
-        // Total number of times the key appears
-        let mut total_counts: Vec<u32> = Vec::new();
-        // Number of time a one-edit neighbor of the consensus value appears
-        let mut neighbor_counts: Vec<u32> = Vec::new();
-        // Quality-score calibration accumulators
-        let mut qscore_correct: HashMap<u8, u64> = HashMap::new();
-        let mut qscore_error: HashMap<u8, u64> = HashMap::new();
-        let mut qscore_correct_per_key: Vec<HashMap<u8, u64>> = Vec::new();
-        let mut qscore_error_per_key: Vec<HashMap<u8, u64>> = Vec::new();
+        let mut error_summary = ErrorSummary::new(self.value_size as usize);
+        let mut error_spectrum = ErrorSpectrumSummary::new();
+        let mut phred_summary = PhredScoreSummary::new();
 
         for (key, value_map) in &self.key_value_qual_map {
 
@@ -371,12 +366,6 @@ impl KVmerSet {
                 continue;
             }
 
-            //println!("Key: {}", self.to_key_string(*key));
-            //for (value, info_list) in value_map {
-            //    println!("  Reference value: {}, count: {}", self.to_value_string(*value), info_list.len());
-            //}
-
-            // Find the count of error types at v=self.value_size
             let mut error_count_map: HashMap<(EditOperation, u8, u8), u32> = HashMap::new();
             let neighbors = _get_neighbors(max_value, self.value_size, self.bidirectional);
             if neighbors.contains_key(&max_value) {
@@ -384,43 +373,28 @@ impl KVmerSet {
                 continue;
             }
 
-            // find the error and consensus up to v counts
-            for v in 1..=self.value_size {
-                let consensus_up_to_v = self._num_consensus_up_to_v(max_value, v, self.bidirectional, value_map);
-                consensus_up_to_v_counts[(v - 1) as usize].push(consensus_up_to_v);
-            }
+            let per_v_consensus: Vec<u32> = (1..=self.value_size)
+                .map(|v| self._num_consensus_up_to_v(max_value, v, self.bidirectional, value_map))
+                .collect();
 
             let mut num_neighbors = 0;
-            //println!("Neighbors of {}: {:?}", max_value, neighbors);
-            //println!("Analyzing key: {}, consensus value: {}", self.to_key_string(*key), self.to_value_string(max_value));
             for (value, info_list) in value_map {
                 let count = info_list.len() as u32;
                 if *value != max_value && neighbors.contains_key(value) {
                     let info = neighbors.get(value).unwrap();
-                    //println!("Value: {}, Operation: {:?}, Position: {}", self.to_value_string(*value), info.op, info.position);
-
-                    // update the error count map
                     let entry = error_count_map.entry((info.op, info.prev_base, info.next_base)).or_insert(0);
                     *entry += count;
                     num_neighbors += count;
                 }
             }
-            //println!("{:?}", error_positions);
 
-            // quality-score calibration for this key
             let (key_correct, key_error) = Self::accumulate_qscore_calibration(max_value, self.value_size, value_map);
-            for (&q, &c) in &key_correct { *qscore_correct.entry(q).or_insert(0) += c; }
-            for (&q, &e) in &key_error   { *qscore_error.entry(q).or_insert(0)   += e; }
 
-            // update the vectors
             keys.push(*key);
             consensus_values.push(max_value);
-            consensus_counts.push(max_count);
-            error_counts.push(error_count_map);
-            total_counts.push(sum_count);
-            neighbor_counts.push(num_neighbors);
-            qscore_correct_per_key.push(key_correct);
-            qscore_error_per_key.push(key_error);
+            error_summary.update(max_count, sum_count, num_neighbors, &per_v_consensus);
+            error_spectrum.update(error_count_map);
+            phred_summary.update(key_correct, key_error);
         }
 
         KVmerStats {
@@ -428,42 +402,19 @@ impl KVmerSet {
             v: self.value_size,
             keys,
             consensus_values,
-            consensus_counts,
-            total_counts,
-            neighbor_counts,
-            error_counts,
-            consensus_up_to_v_counts,
-            qscore_correct,
-            qscore_error,
-            qscore_correct_per_key,
-            qscore_error_per_key,
+            error_summary,
+            error_spectrum,
+            phred_summary,
         }
     }
 
     #[allow(unused)]
     pub fn get_stats_with_reference(&self, threshold: u32, reference: &KVmerSet) -> KVmerStats {
-        // record the keys and consensus values for output
         let mut keys: Vec<u64> = Vec::new();
         let mut consensus_values: Vec<u64> = Vec::new();
-
-        // count the number of consensus and error kmers
-        let mut consensus_counts: Vec<u32> = Vec::new();
-        // A map that records the number of each type of error for each consensus kmer
-        let mut error_counts: Vec<HashMap<(EditOperation, u8, u8), u32>> = Vec::new();
-        // A vector of size value_size, recording the number of consensus up to each position
-        let mut consensus_up_to_v_counts: Vec<Vec<u32>> = Vec::new();
-        for _v in 1..=self.value_size {
-            consensus_up_to_v_counts.push(Vec::new());
-        }
-        // Total number of times the key appears
-        let mut total_counts: Vec<u32> = Vec::new();
-        // Number of time a one-edit neighbor of the consensus value appears
-        let mut neighbor_counts: Vec<u32> = Vec::new();
-        // Quality-score calibration accumulators
-        let mut qscore_correct: HashMap<u8, u64> = HashMap::new();
-        let mut qscore_error: HashMap<u8, u64> = HashMap::new();
-        let mut qscore_correct_per_key: Vec<HashMap<u8, u64>> = Vec::new();
-        let mut qscore_error_per_key: Vec<HashMap<u8, u64>> = Vec::new();
+        let mut error_summary = ErrorSummary::new(self.value_size as usize);
+        let mut error_spectrum = ErrorSpectrumSummary::new();
+        let mut phred_summary = PhredScoreSummary::new();
 
         // for debugging: the number of k-mers that the read set shares with the reference
         let mut shared_kmer_count: u32 = 0;
@@ -479,7 +430,6 @@ impl KVmerSet {
 
             let mut max_count = 0;
             let mut sum_count = 0;
-            let mut max_value: u64 = 0;
 
             // find the consensus value
             for (value, info_list) in value_map {
@@ -487,7 +437,6 @@ impl KVmerSet {
                 sum_count += count;
                 if count > max_count {
                     max_count = count;
-                    max_value = *value;
                 }
             }
             let consensus_count = value_map.get(&consensus_value).map_or(0, |q| q.len() as u32);
@@ -505,7 +454,6 @@ impl KVmerSet {
                 continue;
             }
 
-            // Find the count of error types at v=self.value_size
             let mut error_count_map: HashMap<(EditOperation, u8, u8), u32> = HashMap::new();
             let neighbors = _get_neighbors(consensus_value, self.value_size, self.bidirectional);
             if neighbors.contains_key(&consensus_value) {
@@ -513,41 +461,28 @@ impl KVmerSet {
                 continue;
             }
 
-            // find the error and consensus up to v counts
-            for v in 1..=self.value_size {
-                let consensus_up_to_v = self._num_consensus_up_to_v(consensus_value, v, self.bidirectional, value_map);
-                consensus_up_to_v_counts[(v - 1) as usize].push(consensus_up_to_v);
-            }
+            let per_v_consensus: Vec<u32> = (1..=self.value_size)
+                .map(|v| self._num_consensus_up_to_v(consensus_value, v, self.bidirectional, value_map))
+                .collect();
 
             let mut num_neighbors = 0;
             for (value, info_list) in value_map {
                 let count = info_list.len() as u32;
                 if *value != consensus_value && neighbors.contains_key(value) {
                     let info = neighbors.get(value).unwrap();
-                    //println!("Value: {}, Operation: {:?}, Position: {}", self.to_value_string(*value), info.op, info.position);
-
-                    // update the error count map
                     let entry = error_count_map.entry((info.op, info.prev_base, info.next_base)).or_insert(0);
                     *entry += count;
                     num_neighbors += count;
                 }
             }
-            //println!("{:?}", error_positions);
 
-            // quality-score calibration for this key
             let (key_correct, key_error) = Self::accumulate_qscore_calibration(consensus_value, self.value_size, value_map);
-            for (&q, &c) in &key_correct { *qscore_correct.entry(q).or_insert(0) += c; }
-            for (&q, &e) in &key_error   { *qscore_error.entry(q).or_insert(0)   += e; }
 
-            // update the vectors
             keys.push(*key);
             consensus_values.push(consensus_value);
-            consensus_counts.push(consensus_count);
-            error_counts.push(error_count_map);
-            total_counts.push(sum_count);
-            neighbor_counts.push(num_neighbors);
-            qscore_correct_per_key.push(key_correct);
-            qscore_error_per_key.push(key_error);
+            error_summary.update(consensus_count, sum_count, num_neighbors, &per_v_consensus);
+            error_spectrum.update(error_count_map);
+            phred_summary.update(key_correct, key_error);
         }
 
         //println!("Total count of kvmers that match reference: {}", shared_kmer_count);
@@ -559,18 +494,10 @@ impl KVmerSet {
             v: self.value_size,
             keys,
             consensus_values,
-            consensus_counts,
-            total_counts,
-            neighbor_counts,
-            error_counts,
-            consensus_up_to_v_counts,
-            qscore_correct,
-            qscore_error,
-            qscore_correct_per_key,
-            qscore_error_per_key,
+            error_summary,
+            error_spectrum,
+            phred_summary,
         }
-
-
     }
 
     pub fn output_stats(&self, output_path: &String, stats: &KVmerStats, show_error_types: bool, show_error_vs_v: bool) {
@@ -600,16 +527,16 @@ impl KVmerSet {
                 self.to_key_string(stats.keys[i]),
                 self.to_value_string(stats.consensus_values[i]),
                 self.homopolymer_length(stats.keys[i], stats.consensus_values[i]),
-                stats.consensus_counts[i],
-                stats.neighbor_counts[i],
-                stats.total_counts[i],
+                stats.error_summary.consensus_counts[i],
+                stats.error_summary.neighbor_counts[i],
+                stats.error_summary.total_counts[i],
             ).unwrap();
             if show_error_types {
                 for op in ALL_OPERATIONS.iter() {
                     let mut total_count: u32 = 0;
                     for prev_base in 0..5 {
                         for next_base in 0..5 {
-                            let count = stats.error_counts[i].get(&(*op, prev_base, next_base)).unwrap_or(&0);
+                            let count = stats.error_spectrum.error_counts[i].get(&(*op, prev_base, next_base)).unwrap_or(&0);
                             total_count += *count;
                         }
                     }
@@ -618,7 +545,7 @@ impl KVmerSet {
             }
             if show_error_vs_v {
                 for v in 1..=self.value_size {
-                    let consensus_count_up_to_v = stats.consensus_up_to_v_counts[(v - 1) as usize][i];
+                    let consensus_count_up_to_v = stats.error_summary.consensus_up_to_v_counts[(v - 1) as usize][i];
                     write!(writer, ",{}", consensus_count_up_to_v).unwrap();
                 }
             }
