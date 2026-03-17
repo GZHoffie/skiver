@@ -228,7 +228,7 @@ impl KVmerSet {
         let mut keys: Vec<u64> = Vec::new();
         let mut consensus_values: Vec<u64> = Vec::new();
         let mut error_summary = ErrorSummary::new(self.value_size as usize);
-        let mut error_spectrum = ErrorSpectrumSummary::new();
+        let mut error_spectrum = ErrorSpectrumSummary::new(self.value_size as usize);
         let mut phred_summary = PhredScoreSummary::new();
         let mut read_position_summary = ReadPositionSummary::new();
 
@@ -277,7 +277,7 @@ impl KVmerSet {
         let mut keys: Vec<u64> = Vec::new();
         let mut consensus_values: Vec<u64> = Vec::new();
         let mut error_summary = ErrorSummary::new(self.value_size as usize);
-        let mut error_spectrum = ErrorSpectrumSummary::new();
+        let mut error_spectrum = ErrorSpectrumSummary::new(self.value_size as usize);
         let mut phred_summary = PhredScoreSummary::new();
         let mut read_position_summary = ReadPositionSummary::new();
 

@@ -263,7 +263,7 @@ pub const ALL_OPERATIONS_CANONICAL: [EditOperation; 10] = [
     EditOperation::T_,
 ];
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub struct NeighborInfo {
     pub op: EditOperation,
     pub prev_base: u8,

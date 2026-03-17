@@ -530,8 +530,8 @@ impl ErrorAnalyzer {
         let mut error_counts: HashMap<(EditOperation, u8, u8), u32> = HashMap::new();
 
         indices.iter().for_each(|&i| {
-            for (op, count_map) in stats.error_spectrum.error_counts[i].iter() {
-                let count = error_counts.entry(*op).or_insert(0);
+            for (ni, count_map) in stats.error_spectrum.error_counts[i].iter() {
+                let count = error_counts.entry((ni.op, ni.prev_base, ni.next_base)).or_insert(0);
                 *count += *count_map;
             }
         });

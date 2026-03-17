@@ -1,6 +1,6 @@
 use std::fmt;
 use std::collections::HashMap;
-use crate::types::{EditOperation, ALL_OPERATIONS, SEQ_TO_BYTE, SEQ_TO_CHAR, ValueInfo};
+use crate::types::{EditOperation, ALL_OPERATIONS, SEQ_TO_BYTE, SEQ_TO_CHAR, ValueInfo, NeighborInfo};
 use crate::utils::_get_neighbors;
 
 /// Per-key error-rate statistics.
@@ -15,7 +15,7 @@ pub struct ErrorSummary {
     pub key_strings: Vec<String>,
     pub value_strings: Vec<String>,
     pub homopolymer_lengths: Vec<u32>,
-    pub error_counts_per_key: Vec<HashMap<(EditOperation, u8, u8), u32>>,
+    pub error_counts_per_key: Vec<HashMap<NeighborInfo, u32>>,
     v: usize,
 }
 
@@ -99,13 +99,13 @@ impl ErrorSummary {
             .map(|v| Self::num_consensus_up_to_v(consensus, v, value_size, value_map))
             .collect();
 
-        let mut error_count_map: HashMap<(EditOperation, u8, u8), u32> = HashMap::new();
+        let mut error_count_map: HashMap<NeighborInfo, u32> = HashMap::new();
         let mut num_neighbors: u32 = 0;
         for (value, info_list) in value_map {
             let count = info_list.len() as u32;
             if *value != consensus {
                 if let Some(info) = neighbors.get(value) {
-                    *error_count_map.entry((info.op, info.prev_base, info.next_base)).or_insert(0) += count;
+                    *error_count_map.entry(*info).or_insert(0) += count;
                     num_neighbors += count;
                 }
             }
@@ -153,13 +153,10 @@ impl fmt::Display for ErrorSummary {
                 self.total_counts[i],
             )?;
             for op in ALL_OPERATIONS.iter() {
-                let mut total_count: u32 = 0;
-                for prev_base in 0..5 {
-                    for next_base in 0..5 {
-                        let count = self.error_counts_per_key[i].get(&(*op, prev_base, next_base)).unwrap_or(&0);
-                        total_count += *count;
-                    }
-                }
+                let total_count: u32 = self.error_counts_per_key[i].iter()
+                    .filter(|(ni, _)| ni.op == *op)
+                    .map(|(_, &c)| c)
+                    .sum();
                 write!(f, ",{}", total_count)?;
             }
             for v in 1..=self.v {
@@ -175,44 +172,61 @@ impl fmt::Display for ErrorSummary {
 /// Per-key error-type spectrum statistics.
 /// Corresponds to `KVmerStats` field: `error_counts`.
 pub struct ErrorSpectrumSummary {
-    pub error_counts: Vec<HashMap<(EditOperation, u8, u8), u32>>,
+    pub error_counts: Vec<HashMap<NeighborInfo, u32>>,
+    v: usize,
 }
 
 impl ErrorSpectrumSummary {
-    pub fn new() -> Self {
+    pub fn new(v: usize) -> Self {
         ErrorSpectrumSummary {
             error_counts: Vec::new(),
+            v,
         }
     }
 
     /// Accumulate one key's per-operation error counts.
-    pub fn update(&mut self, error_map: HashMap<(EditOperation, u8, u8), u32>) {
+    pub fn update(&mut self, error_map: HashMap<NeighborInfo, u32>) {
         self.error_counts.push(error_map);
     }
 }
 
 impl fmt::Display for ErrorSpectrumSummary {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut totals: HashMap<(EditOperation, u8, u8), u64> = HashMap::new();
+        // Aggregate counts by (op, prev_base, next_base, position).
+        // Position is 1-based (stored as u8 in NeighborInfo).
+        let mut totals: HashMap<(EditOperation, u8, u8, u8), u64> = HashMap::new();
         for map in &self.error_counts {
-            for (&key, &count) in map {
-                *totals.entry(key).or_insert(0) += count as u64;
+            for (ni, &count) in map {
+                *totals.entry((ni.op, ni.prev_base, ni.next_base, ni.position)).or_insert(0) += count as u64;
             }
         }
-        writeln!(f, "operation,prev_base,next_base,count")?;
+
+        // Header
+        write!(f, "operation,prev_base,next_base,total")?;
+        for pos in 1..=self.v {
+            write!(f, ",pos_{}", pos)?;
+        }
+        writeln!(f)?;
+
+        // Rows: one per (op, prev_base, next_base) with any non-zero count
         for &op in ALL_OPERATIONS.iter() {
             for prev_base in 0u8..4 {
                 for next_base in 0u8..4 {
-                    let count = totals.get(&(op, prev_base, next_base)).copied().unwrap_or(0);
-                    if count > 0 {
-                        writeln!(
-                            f,
-                            "{},{},{},{}",
+                    let counts: Vec<u64> = (1..=self.v as u8)
+                        .map(|pos| totals.get(&(op, prev_base, next_base, pos)).copied().unwrap_or(0))
+                        .collect();
+                    let total: u64 = counts.iter().sum();
+                    if total > 0 {
+                        write!(f, "{},{},{},{}",
                             op,
                             SEQ_TO_CHAR[prev_base as usize],
                             SEQ_TO_CHAR[next_base as usize],
-                            count
+                            total,
                         )?;
+                        for c in &counts {
+                            write!(f, ",{}", c)?;
+                        }
+                        writeln!(f)?;
                     }
                 }
             }
