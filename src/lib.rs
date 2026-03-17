@@ -2,7 +2,6 @@ pub mod kvmer;
 pub mod seeding;
 pub mod types;
 pub mod analyze;
-pub mod calibrate;
 pub mod cmdline;
 pub mod inference;
 pub mod utils;

@@ -350,24 +350,26 @@ impl fmt::Display for ReadPositionSummary {
             for (&pos, &e) in map { *error_from_end.entry(pos).or_insert(0) += e; }
         }
 
-        writeln!(f, "index,from_start,num_correct,num_error")?;
+        writeln!(f, "index,from_start,num_correct,num_error,error_rate")?;
 
         let mut start_positions: Vec<u32> = correct_from_start.keys().chain(error_from_start.keys()).copied().collect();
         start_positions.sort();
         start_positions.dedup();
         for pos in start_positions {
-            writeln!(f, "{},true,{},{}", pos,
-                correct_from_start.get(&pos).copied().unwrap_or(0),
-                error_from_start.get(&pos).copied().unwrap_or(0))?;
+            let nc = correct_from_start.get(&pos).copied().unwrap_or(0);
+            let ne = error_from_start.get(&pos).copied().unwrap_or(0);
+            let error_rate = if nc + ne > 0 { ne as f64 / (nc + ne) as f64 } else { 0.0 };
+            writeln!(f, "{},true,{},{},{:.6}", pos, nc, ne, error_rate)?;
         }
 
         let mut end_positions: Vec<u32> = correct_from_end.keys().chain(error_from_end.keys()).copied().collect();
         end_positions.sort();
         end_positions.dedup();
         for pos in end_positions {
-            writeln!(f, "{},false,{},{}", pos,
-                correct_from_end.get(&pos).copied().unwrap_or(0),
-                error_from_end.get(&pos).copied().unwrap_or(0))?;
+            let nc = correct_from_end.get(&pos).copied().unwrap_or(0);
+            let ne = error_from_end.get(&pos).copied().unwrap_or(0);
+            let error_rate = if nc + ne > 0 { ne as f64 / (nc + ne) as f64 } else { 0.0 };
+            writeln!(f, "{},false,{},{},{:.6}", pos, nc, ne, error_rate)?;
         }
 
         Ok(())
@@ -376,18 +378,17 @@ impl fmt::Display for ReadPositionSummary {
 
 impl fmt::Display for PhredScoreSummary {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "phred,correct,error")?;
+        writeln!(f, "qscore,empirical_qscore,num_correct,num_error,error_rate")?;
         let mut scores: Vec<u8> = self.correct.keys().chain(self.error.keys()).copied().collect();
         scores.sort();
         scores.dedup();
         for q in scores {
-            writeln!(
-                f,
-                "{},{},{}",
-                q,
-                self.correct.get(&q).copied().unwrap_or(0),
-                self.error.get(&q).copied().unwrap_or(0),
-            )?;
+            let num_correct = self.correct.get(&q).copied().unwrap_or(0);
+            let num_error   = self.error.get(&q).copied().unwrap_or(0);
+            let total = num_correct + num_error;
+            let error_rate = if total > 0 { num_error as f64 / total as f64 } else { 0.0 };
+            let empirical_q = if error_rate > 0.0 { -10.0 * error_rate.log10() } else { f64::INFINITY };
+            writeln!(f, "{},{:.4},{},{},{:.6}", q, empirical_q, num_correct, num_error, error_rate)?;
         }
         Ok(())
     }

@@ -17,10 +17,6 @@ pub enum Mode {
     #[clap(display_order = 2)]
     Analyze(AnalyzeArgs),
 
-    /// Calibrate quality scores: output per-Phred-score correct/error counts as CSV.
-    #[clap(display_order = 3)]
-    Calibrate(CalibrateArgs),
-
     /// For testing only: Try mapping the reads to reference genomes, and check how many k-mers are error-free.
     #[clap(display_order = 4)]
     Map(MapArgs),
@@ -150,41 +146,3 @@ pub struct MapArgs {
     pub print_verbose: bool,
 }
 
-#[derive(Args, Default)]
-pub struct CalibrateArgs {
-    #[clap(multiple=true, help_heading = "INPUT", help = "fastq/fasta/sketch files; gzip optional.")]
-    pub files: Vec<String>,
-
-    #[clap(short = 'k', default_value_t = 21, help_heading = "ALGORITHM", help = "Length of keys.")]
-    pub k: u8,
-
-    #[clap(short = 'v', default_value_t = 13, help_heading = "ALGORITHM", help = "Length of values.")]
-    pub v: u8,
-
-    #[clap(short = 'c', default_value_t = 1000, help_heading = "ALGORITHM", help = "Subsampling rate.")]
-    pub c: usize,
-
-    #[clap(short = 'l', long = "lower-bound", default_value_t = 10, help_heading = "ALGORITHM", help = "Minimum total observation count for a key to be included.")]
-    pub lower_bound: u32,
-
-    #[clap(long, help_heading = "ALGORITHM", help = "Use the forward strand only.")]
-    pub forward_only: bool,
-
-    #[clap(short = 'r', long = "reference", help_heading = "ALGORITHM", help = "Reference genome (triggers reference-based consensus inference).")]
-    pub reference: Option<String>,
-
-    #[clap(short = 'f', long = "trim-front", default_value_t = 0, help_heading = "INPUT", help = "Number of bases to trim from the start of each read.")]
-    pub trim_front: usize,
-
-    #[clap(short = 'b', long = "trim-back", default_value_t = 0, help_heading = "INPUT", help = "Number of bases to trim from the end of each read.")]
-    pub trim_back: usize,
-
-    #[clap(short = 'e', long = "outlier-threshold", default_value_t = 3.0, help_heading = "ALGORITHM", help = "IQR multiplier for outlier exclusion before calibration.")]
-    pub outlier_threshold: f32,
-
-    #[clap(long = "num-experiments", default_value_t = 100, help_heading = "ALGORITHM", help = "Number of bootstrap resamples for confidence interval estimation.")]
-    pub num_experiments: u32,
-
-    #[clap(long = "use-all", help_heading = "ALGORITHM", help = "Skip outlier filtering; use all keys for calibration.")]
-    pub use_all: bool,
-}
