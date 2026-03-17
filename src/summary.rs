@@ -1,6 +1,7 @@
 use std::fmt;
 use std::collections::HashMap;
-use crate::types::{EditOperation, ALL_OPERATIONS, SEQ_TO_CHAR};
+use crate::types::{EditOperation, ALL_OPERATIONS, SEQ_TO_BYTE, SEQ_TO_CHAR, ValueInfo};
+use crate::utils::_get_neighbors;
 
 /// Per-key error-rate statistics.
 /// Corresponds to `KVmerStats` fields: `consensus_counts`, `total_counts`,
@@ -11,6 +12,10 @@ pub struct ErrorSummary {
     pub neighbor_counts: Vec<u32>,
     /// Per-key consensus counts for each value prefix length, indexed `[v-1][key_idx]`.
     pub consensus_up_to_v_counts: Vec<Vec<u32>>,
+    pub key_strings: Vec<String>,
+    pub value_strings: Vec<String>,
+    pub homopolymer_lengths: Vec<u32>,
+    pub error_counts_per_key: Vec<HashMap<(EditOperation, u8, u8), u32>>,
     v: usize,
 }
 
@@ -21,41 +26,147 @@ impl ErrorSummary {
             total_counts: Vec::new(),
             neighbor_counts: Vec::new(),
             consensus_up_to_v_counts: vec![Vec::new(); v],
+            key_strings: Vec::new(),
+            value_strings: Vec::new(),
+            homopolymer_lengths: Vec::new(),
+            error_counts_per_key: Vec::new(),
             v,
         }
     }
 
-    /// Accumulate one key's error statistics.
-    /// `per_v_consensus[j]` is the consensus count for value prefix length `j + 1`.
+    fn to_kmer_string(kmer: u64, size: u8) -> String {
+        let mut s = Vec::with_capacity(size as usize);
+        for i in (0..size).rev() {
+            s.push(SEQ_TO_BYTE[((kmer >> (i * 2)) & 0b11) as usize]);
+        }
+        String::from_utf8(s).unwrap()
+    }
+
+    fn homopolymer_length(key: u64, key_size: u8, value: u64, value_size: u8) -> u32 {
+        let mut longest: u32 = 1;
+        let mut current: u32 = 1;
+        let mut last_base = key & 0b11;
+        for i in 1..key_size {
+            let base = (key >> (i * 2)) & 0b11;
+            if base == last_base { current += 1; } else { break; }
+        }
+        for i in (0..value_size).rev() {
+            let base = (value >> (i * 2)) & 0b11;
+            if base == last_base {
+                current += 1;
+            } else {
+                if current > longest { longest = current; }
+                current = 1;
+                last_base = base;
+            }
+        }
+        if current > longest { longest = current; }
+        longest
+    }
+
+    fn num_consensus_up_to_v(consensus: u64, v: u8, value_size: u8, value_map: &HashMap<u64, Vec<ValueInfo>>) -> u32 {
+        let prefix = consensus >> ((value_size - v) * 2);
+        value_map.iter().map(|(neighbor, info_list)| {
+            if (neighbor >> ((value_size - v) * 2)) == prefix { info_list.len() as u32 } else { 0 }
+        }).sum()
+    }
+
+    /// Accumulate one key's error statistics, computing all derived values from the raw inputs.
+    /// Returns `false` (and skips insertion) if `consensus` is its own one-edit neighbor,
+    /// which would confound the X=0 error case.
     pub fn update(
         &mut self,
-        consensus_count: u32,
-        total_count: u32,
-        neighbor_count: u32,
-        per_v_consensus: &[u32],
-    ) {
+        key: u64,
+        consensus: u64,
+        key_size: u8,
+        value_size: u8,
+        bidirectional: bool,
+        value_map: &HashMap<u64, Vec<ValueInfo>>,
+    ) -> bool {
+        let consensus_count = value_map.get(&consensus).map_or(0, |q| q.len() as u32);
+        let sum_count: u32 = value_map.values().map(|v| v.len() as u32).sum();
+        let key_string = Self::to_kmer_string(key, key_size);
+        let value_string = Self::to_kmer_string(consensus, value_size);
+        let homopolymer_length = Self::homopolymer_length(key, key_size, consensus, value_size);
+
+        // neighbors filter: skip keys whose consensus is its own neighbor
+        let neighbors = _get_neighbors(consensus, value_size, bidirectional);
+        if neighbors.contains_key(&consensus) {
+            return false;
+        }
+
+        let per_v_consensus: Vec<u32> = (1..=value_size)
+            .map(|v| Self::num_consensus_up_to_v(consensus, v, value_size, value_map))
+            .collect();
+
+        let mut error_count_map: HashMap<(EditOperation, u8, u8), u32> = HashMap::new();
+        let mut num_neighbors: u32 = 0;
+        for (value, info_list) in value_map {
+            let count = info_list.len() as u32;
+            if *value != consensus {
+                if let Some(info) = neighbors.get(value) {
+                    *error_count_map.entry((info.op, info.prev_base, info.next_base)).or_insert(0) += count;
+                    num_neighbors += count;
+                }
+            }
+        }
+
+        // store
         self.consensus_counts.push(consensus_count);
-        self.total_counts.push(total_count);
-        self.neighbor_counts.push(neighbor_count);
+        self.total_counts.push(sum_count);
+        self.neighbor_counts.push(num_neighbors);
         for (j, &c) in per_v_consensus.iter().enumerate() {
             if j < self.consensus_up_to_v_counts.len() {
                 self.consensus_up_to_v_counts[j].push(c);
             }
         }
+        self.key_strings.push(key_string);
+        self.value_strings.push(value_string);
+        self.homopolymer_lengths.push(homopolymer_length);
+        self.error_counts_per_key.push(error_count_map);
+
+        true
     }
 }
 
 impl fmt::Display for ErrorSummary {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let total_consensus: u64 = self.consensus_counts.iter().map(|&c| c as u64).sum();
-        let total_count: u64 = self.total_counts.iter().map(|&c| c as u64).sum();
-        let total_neighbor: u64 = self.neighbor_counts.iter().map(|&c| c as u64).sum();
-        writeln!(f, "num_keys,total_consensus,total_count,total_neighbor")?;
-        writeln!(f, "{},{},{},{}", self.consensus_counts.len(), total_consensus, total_count, total_neighbor)?;
-        writeln!(f, "v,consensus_up_to_v")?;
-        for j in 0..self.v {
-            let sum: u64 = self.consensus_up_to_v_counts[j].iter().map(|&c| c as u64).sum();
-            writeln!(f, "{},{}", j + 1, sum)?;
+        // header
+        write!(f, "key,consensus_value,homopolymer_length,consensus_count,neighbor_count,total_count")?;
+        for op in ALL_OPERATIONS {
+            write!(f, ",{:?}", op)?;
+        }
+        for v in 1..=self.v {
+            write!(f, ",consensus_count_up_to_v{}", v)?;
+        }
+        writeln!(f)?;
+
+        // rows
+        for i in 0..self.consensus_counts.len() {
+            write!(f,
+                "{},{},{},{},{},{}",
+                self.key_strings[i],
+                self.value_strings[i],
+                self.homopolymer_lengths[i],
+                self.consensus_counts[i],
+                self.neighbor_counts[i],
+                self.total_counts[i],
+            )?;
+            for op in ALL_OPERATIONS.iter() {
+                let mut total_count: u32 = 0;
+                for prev_base in 0..5 {
+                    for next_base in 0..5 {
+                        let count = self.error_counts_per_key[i].get(&(*op, prev_base, next_base)).unwrap_or(&0);
+                        total_count += *count;
+                    }
+                }
+                write!(f, ",{}", total_count)?;
+            }
+            for v in 1..=self.v {
+                let consensus_count_up_to_v = self.consensus_up_to_v_counts[v - 1][i];
+                write!(f, ",{}", consensus_count_up_to_v)?;
+            }
+            writeln!(f)?;
         }
         Ok(())
     }
@@ -131,7 +242,28 @@ impl PhredScoreSummary {
     }
 
     /// Accumulate one key's Phred calibration data.
-    pub fn update(&mut self, key_correct: HashMap<u8, u64>, key_error: HashMap<u8, u64>) {
+    pub fn update(&mut self, consensus: u64, value_size: u8, value_map: &HashMap<u64, Vec<ValueInfo>>) {
+        let mut key_correct: HashMap<u8, u64> = HashMap::new();
+        let mut key_error: HashMap<u8, u64> = HashMap::new();
+        for (value, info_list) in value_map {
+            for info in info_list {
+                if info.qual.is_empty() {
+                    continue;
+                }
+                for p in 0..value_size as usize {
+                    let bit_shift = 2 * (value_size as usize - 1 - p);
+                    let value_base     = (value     >> bit_shift) & 0b11;
+                    let consensus_base = (consensus >> bit_shift) & 0b11;
+                    let phred = info.qual[p].saturating_sub(33);
+                    if value_base == consensus_base {
+                        *key_correct.entry(phred).or_insert(0) += 1;
+                    } else {
+                        *key_error.entry(phred).or_insert(0) += 1;
+                        break;
+                    }
+                }
+            }
+        }
         for (&q, &c) in &key_correct { *self.correct.entry(q).or_insert(0) += c; }
         for (&q, &e) in &key_error   { *self.error.entry(q).or_insert(0)   += e; }
         self.correct_per_key.push(key_correct);
@@ -159,13 +291,38 @@ impl ReadPositionSummary {
         }
     }
 
-    pub fn update(
-        &mut self,
-        correct_from_start: HashMap<u32, u64>,
-        correct_from_end: HashMap<u32, u64>,
-        error_from_start: HashMap<u32, u64>,
-        error_from_end: HashMap<u32, u64>,
-    ) {
+    pub fn update(&mut self, consensus: u64, value_size: u8, value_map: &HashMap<u64, Vec<ValueInfo>>) {
+        let mut correct_from_start: HashMap<u32, u64> = HashMap::new();
+        let mut correct_from_end: HashMap<u32, u64> = HashMap::new();
+        let mut error_from_start: HashMap<u32, u64> = HashMap::new();
+        let mut error_from_end: HashMap<u32, u64> = HashMap::new();
+        for (value, info_list) in value_map {
+            for info in info_list {
+                if info.qual.is_empty() {
+                    continue;
+                }
+                for p in 0..value_size as usize {
+                    let bit_shift = 2 * (value_size as usize - 1 - p);
+                    let value_base     = (value     >> bit_shift) & 0b11;
+                    let consensus_base = (consensus >> bit_shift) & 0b11;
+                    let (pos_from_start, pos_from_end) = if info.is_forward {
+                        (info.start_index + p as u32,
+                         info.dist_to_read_end.saturating_sub(1 + p as u32))
+                    } else {
+                        (info.start_index.saturating_sub(p as u32),
+                         info.dist_to_read_end + p as u32)
+                    };
+                    if value_base == consensus_base {
+                        *correct_from_start.entry(pos_from_start).or_insert(0) += 1;
+                        *correct_from_end.entry(pos_from_end).or_insert(0) += 1;
+                    } else {
+                        *error_from_start.entry(pos_from_start).or_insert(0) += 1;
+                        *error_from_end.entry(pos_from_end).or_insert(0) += 1;
+                        break;
+                    }
+                }
+            }
+        }
         self.correct_from_start_per_key.push(correct_from_start);
         self.correct_from_end_per_key.push(correct_from_end);
         self.error_from_start_per_key.push(error_from_start);

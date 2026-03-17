@@ -1,6 +1,5 @@
 use crate::kvmer::*;
 use crate::utils::*;
-use crate::types::*;
 use crate::inference::*;
 use crate::cmdline::AnalyzeArgs;
 
@@ -59,7 +58,7 @@ pub fn analyze(args: AnalyzeArgs) {
         stats = kvmer_set.get_stats(lower_bound);
     }
     if let Some(output_path) = &args.output_path {
-        kvmer_set.output_stats(output_path, &stats, true, true);
+        kvmer_set.output_stats(output_path, &stats);
     }
 
     // if reference is set, the filter should be disabled
