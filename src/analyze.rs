@@ -69,10 +69,6 @@ pub fn analyze(args: AnalyzeArgs) {
 
     if let Some(prefix) = &args.output_prefix {
         fs::write(format!("{}.summary_error_rate.csv", prefix), &analysis_output).unwrap();
-        fs::write(format!("{}.kvmer.csv", prefix), format!("{}", stats.error_summary)).unwrap();
-        fs::write(format!("{}.summary_error_spectrum.csv", prefix), format!("{}", stats.error_spectrum)).unwrap();
-        fs::write(format!("{}.summary_phred.csv", prefix), format!("{}", stats.phred_summary)).unwrap();
-        fs::write(format!("{}.summary_read_position.csv", prefix), format!("{}", stats.read_position_summary)).unwrap();
         info!("Output written to prefix {}.", prefix);
     } else {
         println!("{}", analysis_output);

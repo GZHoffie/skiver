@@ -1,4 +1,3 @@
-use std::fmt;
 use std::collections::HashMap;
 use crate::types::{EditOperation, ALL_OPERATIONS, SEQ_TO_BYTE, SEQ_TO_CHAR, ValueInfo, NeighborInfo};
 use crate::utils::_get_neighbors;
@@ -129,21 +128,25 @@ impl ErrorSummary {
     }
 }
 
-impl fmt::Display for ErrorSummary {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // header
-        write!(f, "key,consensus_value,homopolymer_length,consensus_count,neighbor_count,total_count")?;
+impl ErrorSummary {
+    pub fn to_csv(&self, indices: Option<&[usize]>) -> String {
+        use std::fmt::Write;
+        let all: Vec<usize>;
+        let indices = match indices {
+            Some(idx) => idx,
+            None => { all = (0..self.consensus_counts.len()).collect(); &all }
+        };
+        let mut out = String::new();
+        write!(out, "key,consensus_value,homopolymer_length,consensus_count,neighbor_count,total_count").unwrap();
         for op in ALL_OPERATIONS {
-            write!(f, ",{:?}", op)?;
+            write!(out, ",{:?}", op).unwrap();
         }
         for v in 1..=self.v {
-            write!(f, ",consensus_count_up_to_v{}", v)?;
+            write!(out, ",consensus_count_up_to_v{}", v).unwrap();
         }
-        writeln!(f)?;
-
-        // rows
-        for i in 0..self.consensus_counts.len() {
-            write!(f,
+        writeln!(out).unwrap();
+        for &i in indices {
+            write!(out,
                 "{},{},{},{},{},{}",
                 self.key_strings[i],
                 self.value_strings[i],
@@ -151,21 +154,21 @@ impl fmt::Display for ErrorSummary {
                 self.consensus_counts[i],
                 self.neighbor_counts[i],
                 self.total_counts[i],
-            )?;
+            ).unwrap();
             for op in ALL_OPERATIONS.iter() {
                 let total_count: u32 = self.error_counts_per_key[i].iter()
                     .filter(|(ni, _)| ni.op == *op)
                     .map(|(_, &c)| c)
                     .sum();
-                write!(f, ",{}", total_count)?;
+                write!(out, ",{}", total_count).unwrap();
             }
             for v in 1..=self.v {
                 let consensus_count_up_to_v = self.consensus_up_to_v_counts[v - 1][i];
-                write!(f, ",{}", consensus_count_up_to_v)?;
+                write!(out, ",{}", consensus_count_up_to_v).unwrap();
             }
-            writeln!(f)?;
+            writeln!(out).unwrap();
         }
-        Ok(())
+        out
     }
 }
 
@@ -190,25 +193,29 @@ impl ErrorSpectrumSummary {
     }
 }
 
-impl fmt::Display for ErrorSpectrumSummary {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Aggregate counts by (op, prev_base, next_base, position).
-        // Position is 1-based (stored as u8 in NeighborInfo).
+impl ErrorSpectrumSummary {
+    pub fn to_csv(&self, indices: Option<&[usize]>) -> String {
+        use std::fmt::Write;
+        let all: Vec<usize>;
+        let indices = match indices {
+            Some(idx) => idx,
+            None => { all = (0..self.error_counts.len()).collect(); &all }
+        };
+        // Aggregate counts by (op, prev_base, next_base, position) for the given indices.
         let mut totals: HashMap<(EditOperation, u8, u8, u8), u64> = HashMap::new();
-        for map in &self.error_counts {
-            for (ni, &count) in map {
+        for &i in indices {
+            for (ni, &count) in &self.error_counts[i] {
                 *totals.entry((ni.op, ni.prev_base, ni.next_base, ni.position)).or_insert(0) += count as u64;
             }
         }
 
-        // Header
-        write!(f, "operation,prev_base,next_base,total")?;
+        let mut out = String::new();
+        write!(out, "operation,prev_base,next_base,total").unwrap();
         for pos in 1..=self.v {
-            write!(f, ",pos_{}", pos)?;
+            write!(out, ",pos_{}", pos).unwrap();
         }
-        writeln!(f)?;
+        writeln!(out).unwrap();
 
-        // Rows: one per (op, prev_base, next_base) with any non-zero count
         for &op in ALL_OPERATIONS.iter() {
             for prev_base in 0u8..4 {
                 for next_base in 0u8..4 {
@@ -217,21 +224,21 @@ impl fmt::Display for ErrorSpectrumSummary {
                         .collect();
                     let total: u64 = counts.iter().sum();
                     if total > 0 {
-                        write!(f, "{},{},{},{}",
+                        write!(out, "{},{},{},{}",
                             op,
                             SEQ_TO_CHAR[prev_base as usize],
                             SEQ_TO_CHAR[next_base as usize],
                             total,
-                        )?;
+                        ).unwrap();
                         for c in &counts {
-                            write!(f, ",{}", c)?;
+                            write!(out, ",{}", c).unwrap();
                         }
-                        writeln!(f)?;
+                        writeln!(out).unwrap();
                     }
                 }
             }
         }
-        Ok(())
+        out
     }
 }
 
@@ -344,27 +351,28 @@ impl ReadPositionSummary {
     }
 }
 
-impl fmt::Display for ReadPositionSummary {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl ReadPositionSummary {
+    pub fn to_csv(&self, indices: Option<&[usize]>) -> String {
+        use std::fmt::Write;
+        let all: Vec<usize>;
+        let indices = match indices {
+            Some(idx) => idx,
+            None => { all = (0..self.correct_from_start_per_key.len()).collect(); &all }
+        };
         let mut correct_from_start: HashMap<u32, u64> = HashMap::new();
         let mut correct_from_end: HashMap<u32, u64> = HashMap::new();
         let mut error_from_start: HashMap<u32, u64> = HashMap::new();
         let mut error_from_end: HashMap<u32, u64> = HashMap::new();
 
-        for map in &self.correct_from_start_per_key {
-            for (&pos, &c) in map { *correct_from_start.entry(pos).or_insert(0) += c; }
-        }
-        for map in &self.correct_from_end_per_key {
-            for (&pos, &c) in map { *correct_from_end.entry(pos).or_insert(0) += c; }
-        }
-        for map in &self.error_from_start_per_key {
-            for (&pos, &e) in map { *error_from_start.entry(pos).or_insert(0) += e; }
-        }
-        for map in &self.error_from_end_per_key {
-            for (&pos, &e) in map { *error_from_end.entry(pos).or_insert(0) += e; }
+        for &i in indices {
+            for (&pos, &c) in &self.correct_from_start_per_key[i] { *correct_from_start.entry(pos).or_insert(0) += c; }
+            for (&pos, &c) in &self.correct_from_end_per_key[i]   { *correct_from_end.entry(pos).or_insert(0) += c; }
+            for (&pos, &e) in &self.error_from_start_per_key[i]   { *error_from_start.entry(pos).or_insert(0) += e; }
+            for (&pos, &e) in &self.error_from_end_per_key[i]     { *error_from_end.entry(pos).or_insert(0) += e; }
         }
 
-        writeln!(f, "index,from_start,num_correct,num_error,error_rate")?;
+        let mut out = String::new();
+        writeln!(out, "index,from_start,num_correct,num_error,error_rate").unwrap();
 
         let mut start_positions: Vec<u32> = correct_from_start.keys().chain(error_from_start.keys()).copied().collect();
         start_positions.sort();
@@ -373,7 +381,7 @@ impl fmt::Display for ReadPositionSummary {
             let nc = correct_from_start.get(&pos).copied().unwrap_or(0);
             let ne = error_from_start.get(&pos).copied().unwrap_or(0);
             let error_rate = if nc + ne > 0 { ne as f64 / (nc + ne) as f64 } else { 0.0 };
-            writeln!(f, "{},true,{},{},{:.6}", pos, nc, ne, error_rate)?;
+            writeln!(out, "{},true,{},{},{:.6}", pos, nc, ne, error_rate).unwrap();
         }
 
         let mut end_positions: Vec<u32> = correct_from_end.keys().chain(error_from_end.keys()).copied().collect();
@@ -383,27 +391,40 @@ impl fmt::Display for ReadPositionSummary {
             let nc = correct_from_end.get(&pos).copied().unwrap_or(0);
             let ne = error_from_end.get(&pos).copied().unwrap_or(0);
             let error_rate = if nc + ne > 0 { ne as f64 / (nc + ne) as f64 } else { 0.0 };
-            writeln!(f, "{},false,{},{},{:.6}", pos, nc, ne, error_rate)?;
+            writeln!(out, "{},false,{},{},{:.6}", pos, nc, ne, error_rate).unwrap();
         }
 
-        Ok(())
+        out
     }
 }
 
-impl fmt::Display for PhredScoreSummary {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "qscore,empirical_qscore,num_correct,num_error,error_rate")?;
-        let mut scores: Vec<u8> = self.correct.keys().chain(self.error.keys()).copied().collect();
+impl PhredScoreSummary {
+    pub fn to_csv(&self, indices: Option<&[usize]>) -> String {
+        use std::fmt::Write;
+        let all: Vec<usize>;
+        let indices = match indices {
+            Some(idx) => idx,
+            None => { all = (0..self.correct_per_key.len()).collect(); &all }
+        };
+        let mut correct: HashMap<u8, u64> = HashMap::new();
+        let mut error: HashMap<u8, u64> = HashMap::new();
+        for &i in indices {
+            for (&q, &c) in &self.correct_per_key[i] { *correct.entry(q).or_insert(0) += c; }
+            for (&q, &e) in &self.error_per_key[i]   { *error.entry(q).or_insert(0) += e; }
+        }
+        let mut scores: Vec<u8> = correct.keys().chain(error.keys()).copied().collect();
         scores.sort();
         scores.dedup();
+        let mut out = String::new();
+        writeln!(out, "qscore,empirical_qscore,num_correct,num_error,error_rate").unwrap();
         for q in scores {
-            let num_correct = self.correct.get(&q).copied().unwrap_or(0);
-            let num_error   = self.error.get(&q).copied().unwrap_or(0);
+            let num_correct = correct.get(&q).copied().unwrap_or(0);
+            let num_error   = error.get(&q).copied().unwrap_or(0);
             let total = num_correct + num_error;
             let error_rate = if total > 0 { num_error as f64 / total as f64 } else { 0.0 };
             let empirical_q = if error_rate > 0.0 { -10.0 * error_rate.log10() } else { f64::INFINITY };
-            writeln!(f, "{},{:.4},{},{},{:.6}", q, empirical_q, num_correct, num_error, error_rate)?;
+            writeln!(out, "{},{:.4},{},{},{:.6}", q, empirical_q, num_correct, num_error, error_rate).unwrap();
         }
-        Ok(())
+        out
     }
 }

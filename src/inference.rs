@@ -878,6 +878,7 @@ impl ErrorAnalyzer {
         let per_base_error_rate_ci = (1.0 - (-(lambda_ci.0)).exp(), 1.0 - (-(lambda_ci.1)).exp());
 
         if let Some(prefix) = &self.args.output_prefix {
+            use std::fs;
             use std::fs::File;
             use std::io::{BufWriter, Write};
 
@@ -887,15 +888,20 @@ impl ErrorAnalyzer {
 
             writeln!(writer, "t,num_candidates,num_survival,hazard_ratio,5th_percentile,95th_percentile").expect("Could not write to hazard ratio output file.");
             for v in 0..hazard_ratio.len() {
-                writeln!(writer, "{},{},{},{:.6},{:.6},{:.6}", 
+                writeln!(writer, "{},{},{},{:.6},{:.6},{:.6}",
                     v + 1 + self.args.k as usize,
                     x_sum[v],
                     y_sum[v],
-                    hazard_ratio[v], 
-                    hazard_ratio_ci[v].0, 
+                    hazard_ratio[v],
+                    hazard_ratio_ci[v].0,
                     hazard_ratio_ci[v].1
                 ).expect("Could not write to hazard ratio output file.");
             }
+
+            fs::write(format!("{}.kvmer.csv", prefix), stats.error_summary.to_csv(Some(&indices))).unwrap();
+            fs::write(format!("{}.summary_error_spectrum.csv", prefix), stats.error_spectrum.to_csv(Some(&indices))).unwrap();
+            fs::write(format!("{}.summary_phred.csv", prefix), stats.phred_summary.to_csv(Some(&indices))).unwrap();
+            fs::write(format!("{}.summary_read_position.csv", prefix), stats.read_position_summary.to_csv(Some(&indices))).unwrap();
         }
 
         // estimate key coverage
