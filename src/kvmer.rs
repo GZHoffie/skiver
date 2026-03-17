@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 
 use crate::{seeding::*, types::*, utils::*, constants::*};
-use crate::summary::{ErrorSummary, ErrorSpectrumSummary, PhredScoreSummary};
+use crate::summary::{ErrorSummary, ErrorSpectrumSummary, PhredScoreSummary, ReadPositionSummary};
 
 /// kv-mer statistics for downstream analysis.
 pub struct KVmerStats {
@@ -23,6 +23,7 @@ pub struct KVmerStats {
     pub error_summary: ErrorSummary,
     pub error_spectrum: ErrorSpectrumSummary,
     pub phred_summary: PhredScoreSummary,
+    pub read_position_summary: ReadPositionSummary,
 }
 
 
@@ -338,12 +339,57 @@ impl KVmerSet {
         (qscore_correct, qscore_error)
     }
 
+    /// Walk every observation for a given key base-by-base against `consensus`.
+    /// For each position p in the value:
+    ///   - correct → record pos_from_start and pos_from_end in correct maps
+    ///   - mismatch → record in error maps and stop (same break logic as qscore calibration)
+    /// Empty qual observations (FASTA) are skipped.
+    fn accumulate_read_position_calibration(
+        consensus: u64,
+        value_size: u8,
+        value_map: &HashMap<u64, Vec<ValueInfo>>,
+    ) -> (HashMap<u32, u64>, HashMap<u32, u64>, HashMap<u32, u64>, HashMap<u32, u64>) {
+        let mut correct_from_start: HashMap<u32, u64> = HashMap::new();
+        let mut correct_from_end: HashMap<u32, u64> = HashMap::new();
+        let mut error_from_start: HashMap<u32, u64> = HashMap::new();
+        let mut error_from_end: HashMap<u32, u64> = HashMap::new();
+        for (value, info_list) in value_map {
+            for info in info_list {
+                if info.qual.is_empty() {
+                    continue;
+                }
+                for p in 0..value_size as usize {
+                    let bit_shift = 2 * (value_size as usize - 1 - p);
+                    let value_base     = (value     >> bit_shift) & 0b11;
+                    let consensus_base = (consensus >> bit_shift) & 0b11;
+                    let (pos_from_start, pos_from_end) = if info.is_forward {
+                        (info.start_index + p as u32,
+                         info.dist_to_read_end.saturating_sub(1 + p as u32))
+                    } else {
+                        (info.start_index.saturating_sub(p as u32),
+                         info.dist_to_read_end + p as u32)
+                    };
+                    if value_base == consensus_base {
+                        *correct_from_start.entry(pos_from_start).or_insert(0) += 1;
+                        *correct_from_end.entry(pos_from_end).or_insert(0) += 1;
+                    } else {
+                        *error_from_start.entry(pos_from_start).or_insert(0) += 1;
+                        *error_from_end.entry(pos_from_end).or_insert(0) += 1;
+                        break;
+                    }
+                }
+            }
+        }
+        (correct_from_start, correct_from_end, error_from_start, error_from_end)
+    }
+
     pub fn get_stats(&self, threshold: u32) -> KVmerStats {
         let mut keys: Vec<u64> = Vec::new();
         let mut consensus_values: Vec<u64> = Vec::new();
         let mut error_summary = ErrorSummary::new(self.value_size as usize);
         let mut error_spectrum = ErrorSpectrumSummary::new();
         let mut phred_summary = PhredScoreSummary::new();
+        let mut read_position_summary = ReadPositionSummary::new();
 
         for (key, value_map) in &self.key_value_qual_map {
 
@@ -389,12 +435,15 @@ impl KVmerSet {
             }
 
             let (key_correct, key_error) = Self::accumulate_qscore_calibration(max_value, self.value_size, value_map);
+            let (pos_correct_start, pos_correct_end, pos_error_start, pos_error_end) =
+                Self::accumulate_read_position_calibration(max_value, self.value_size, value_map);
 
             keys.push(*key);
             consensus_values.push(max_value);
             error_summary.update(max_count, sum_count, num_neighbors, &per_v_consensus);
             error_spectrum.update(error_count_map);
             phred_summary.update(key_correct, key_error);
+            read_position_summary.update(pos_correct_start, pos_correct_end, pos_error_start, pos_error_end);
         }
 
         KVmerStats {
@@ -405,6 +454,7 @@ impl KVmerSet {
             error_summary,
             error_spectrum,
             phred_summary,
+            read_position_summary,
         }
     }
 
@@ -415,6 +465,7 @@ impl KVmerSet {
         let mut error_summary = ErrorSummary::new(self.value_size as usize);
         let mut error_spectrum = ErrorSpectrumSummary::new();
         let mut phred_summary = PhredScoreSummary::new();
+        let mut read_position_summary = ReadPositionSummary::new();
 
         // for debugging: the number of k-mers that the read set shares with the reference
         let mut shared_kmer_count: u32 = 0;
@@ -477,12 +528,15 @@ impl KVmerSet {
             }
 
             let (key_correct, key_error) = Self::accumulate_qscore_calibration(consensus_value, self.value_size, value_map);
+            let (pos_correct_start, pos_correct_end, pos_error_start, pos_error_end) =
+                Self::accumulate_read_position_calibration(consensus_value, self.value_size, value_map);
 
             keys.push(*key);
             consensus_values.push(consensus_value);
             error_summary.update(consensus_count, sum_count, num_neighbors, &per_v_consensus);
             error_spectrum.update(error_count_map);
             phred_summary.update(key_correct, key_error);
+            read_position_summary.update(pos_correct_start, pos_correct_end, pos_error_start, pos_error_end);
         }
 
         //println!("Total count of kvmers that match reference: {}", shared_kmer_count);
@@ -497,6 +551,7 @@ impl KVmerSet {
             error_summary,
             error_spectrum,
             phred_summary,
+            read_position_summary,
         }
     }
 

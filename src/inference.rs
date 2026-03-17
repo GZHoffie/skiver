@@ -15,6 +15,22 @@ use rand::Rng;
  * Each field is a tuple of (estimate, (5th_percentile, 95th_percentile))
  * where the confidence interval is estimated using bootstrap
  */
+pub struct ReadPositionCalibration {
+    pub index: u32,
+    pub from_start: bool,
+    pub num_correct: u64,
+    pub num_error: u64,
+}
+
+pub struct QscoreCalibration {
+    pub qscore: u8,
+    pub num_correct: u64,
+    pub num_error: u64,
+    pub error_rate: f64,
+    pub ci_lower: f64,
+    pub ci_upper: f64,
+}
+
 pub struct ErrorSpectrum {
     // estimated Weibull parameters
     pub estimated_lambda: (f32, (f32, f32)),
@@ -639,28 +655,10 @@ impl ErrorAnalyzer {
         let upper_error_rate = error_rate_list[(self.args.num_experiments as f32 * 0.95) as usize];
 
         ((lower_lambda, upper_lambda), (lower_beta, upper_beta), hazard_ratio_range_list, (lower_error_rate, upper_error_rate))
-        /* 
-        let mut mean = alpha_list.iter().zip(beta_list.iter())
-            .map(|(&a, &b)| a / (a + b))
-            .collect::<Vec<f32>>();
-        mean.sort_by(f32::total_cmp);
-        let lower_mean = mean[(self.num_experiments as f32 * 0.05) as usize];
-        let upper_mean = mean[(self.num_experiments as f32 * 0.95) as usize];
-
-        let std = alpha_list.iter().zip(beta_list.iter())
-            .map(|(&a, &b)| ((a * b) / (((a + b) * (a + b)) * (a + b + 1.0))).sqrt())
-            .collect::<Vec<f32>>();
-        let mut std_sorted = std.clone();
-        std_sorted.sort_by(f32::total_cmp);
-        let lower_std = std_sorted[(self.num_experiments as f32 * 0.05) as usize];
-        let upper_std = std_sorted[(self.num_experiments as f32 * 0.95) as usize];
-
-        ((lower_mean, upper_mean), (lower_std, upper_std))
-        */
     }
 
 
-    // returns (estimated_a, estimated_b, hazard_ratios, x_sum, y_sum)
+    // returns (estimated_lambda, estimated_beta, hazard_ratios, x_sum, y_sum)
     pub fn estimate_hazard_ratio(&self, stats: &KVmerStats, indices: &Vec<usize>) -> (f32, f32, Vec<f32>, Vec<u32>, Vec<u32>) {
         let mut x: &Vec<u32>;
         let mut y: &Vec<u32>;
@@ -678,37 +676,15 @@ impl ErrorAnalyzer {
                 y = &stats.error_summary.consensus_up_to_v_counts[(v - 1) as usize];
             }
 
-            /*
-            println!("v={}, x_sum={}, y_sum={}", v, 
-                    x.iter().sum::<u32>(), // self.sum_indices(x, indices), 
-                    y.iter().sum::<u32>(), //self.sum_indices(y, indices));
-            );
-            */
-
             let h = self.calculate_ratio(x, y, indices);
             hazard_ratios.push(1. - h);
             x_sum.push(self.sum_indices(x, indices));
             y_sum.push(self.sum_indices(y, indices));
         }
-        /*
-        for &h in hazard_ratios.iter() {
-            println!("{},", h);
-        }
-        */
-        /* 
-        // estimate the parameters of the beta distribution
-        let (alpha, beta) = self.fit_hazard_ratio_beta_distribution(&hazard_ratios, indices.len());
-        let mean = alpha / (alpha + beta);
-        let std = (alpha * beta / (((alpha + beta) * (alpha + beta)) * (alpha + beta + 1.0))).sqrt();
-
-        (mean, std, alpha, beta)
-        */
 
         let (lambda, beta) = self.fit_hazard_ratio(&hazard_ratios);
         //println!("Weibull parameters: alpha = {}, beta = {}", a, b);
-        (lambda, beta, hazard_ratios, x_sum, y_sum)
-
-        
+        (lambda, beta, hazard_ratios, x_sum, y_sum) 
     }
 
     pub fn key_coverage(&self, stats: &KVmerStats, indices: &Vec<usize>) -> (f32, (f32, f32)) {
@@ -755,7 +731,7 @@ impl ErrorAnalyzer {
     /// those key indices to estimate the 5th–95th percentile confidence interval.
     ///
     /// Returns a vector of `(qscore, num_correct, num_error, error_rate, ci_lower, ci_upper)`.
-    pub fn calibrate_qscores(&self, stats: &KVmerStats) -> Vec<(u8, u64, u64, f64, f64, f64)> {
+    pub fn calibrate_qscores(&self, stats: &KVmerStats) -> Vec<QscoreCalibration> {
         // Filter outlier keys
         let indices = if !self.args.use_all {
             self.find_hazard_ratio_outliers(stats)
@@ -819,8 +795,67 @@ impl ErrorAnalyzer {
             let lower = if n > 0 { rates[(n as f64 * 0.05) as usize] } else { 0.0 };
             let upper = if n > 0 { rates[((n as f64 * 0.95) as usize).min(n - 1)] } else { 0.0 };
 
-            result.push((q, correct, error, error_rate, lower, upper));
+            result.push(QscoreCalibration { qscore: q, num_correct: correct, num_error: error, error_rate, ci_lower: lower, ci_upper: upper });
         }
+        result
+    }
+
+    /// Like `calibrate_qscores`, but aggregates correct/error counts by read position
+    /// (from start and from end) across inlier keys.  No bootstrap CI is computed
+    /// since the output does not include confidence intervals.
+    pub fn calibrate_read_positions(&self, stats: &KVmerStats) -> Vec<ReadPositionCalibration> {
+        let indices = if !self.args.use_all {
+            self.find_hazard_ratio_outliers(stats)
+        } else {
+            (0..stats.error_summary.consensus_counts.len()).collect()
+        };
+
+        let mut correct_from_start: HashMap<u32, u64> = HashMap::new();
+        let mut correct_from_end: HashMap<u32, u64> = HashMap::new();
+        let mut error_from_start: HashMap<u32, u64> = HashMap::new();
+        let mut error_from_end: HashMap<u32, u64> = HashMap::new();
+
+        for &i in &indices {
+            for (&pos, &c) in &stats.read_position_summary.correct_from_start_per_key[i] {
+                *correct_from_start.entry(pos).or_insert(0) += c;
+            }
+            for (&pos, &c) in &stats.read_position_summary.correct_from_end_per_key[i] {
+                *correct_from_end.entry(pos).or_insert(0) += c;
+            }
+            for (&pos, &e) in &stats.read_position_summary.error_from_start_per_key[i] {
+                *error_from_start.entry(pos).or_insert(0) += e;
+            }
+            for (&pos, &e) in &stats.read_position_summary.error_from_end_per_key[i] {
+                *error_from_end.entry(pos).or_insert(0) += e;
+            }
+        }
+
+        let mut result = Vec::new();
+
+        let mut start_positions: Vec<u32> = correct_from_start.keys().chain(error_from_start.keys()).copied().collect();
+        start_positions.sort_unstable();
+        start_positions.dedup();
+        for pos in start_positions {
+            result.push(ReadPositionCalibration {
+                index: pos,
+                from_start: true,
+                num_correct: *correct_from_start.get(&pos).unwrap_or(&0),
+                num_error: *error_from_start.get(&pos).unwrap_or(&0),
+            });
+        }
+
+        let mut end_positions: Vec<u32> = correct_from_end.keys().chain(error_from_end.keys()).copied().collect();
+        end_positions.sort_unstable();
+        end_positions.dedup();
+        for pos in end_positions {
+            result.push(ReadPositionCalibration {
+                index: pos,
+                from_start: false,
+                num_correct: *correct_from_end.get(&pos).unwrap_or(&0),
+                num_error: *error_from_end.get(&pos).unwrap_or(&0),
+            });
+        }
+
         result
     }
 

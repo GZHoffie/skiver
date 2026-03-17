@@ -57,8 +57,14 @@ pub fn calibrate(args: CalibrateArgs) {
     let results = analyzer.calibrate_qscores(&stats);
 
     println!("qscore,empirical_qscore,num_correct,num_error,error_rate,5th_percentile,95th_percentile");
-    for (q, correct, error, error_rate, lower, upper) in results {
-        let empirical_q = if error_rate > 0.0 { -10.0 * error_rate.log10() } else { f64::INFINITY };
-        println!("{},{:.4},{},{},{:.6},{:.6},{:.6}", q, empirical_q, correct, error, error_rate, lower, upper);
+    for r in results {
+        let empirical_q = if r.error_rate > 0.0 { -10.0 * r.error_rate.log10() } else { f64::INFINITY };
+        println!("{},{:.4},{},{},{:.6},{:.6},{:.6}", r.qscore, empirical_q, r.num_correct, r.num_error, r.error_rate, r.ci_lower, r.ci_upper);
+    }
+
+    let position_results = analyzer.calibrate_read_positions(&stats);
+    println!("\nindex,from_start,num_correct,num_error");
+    for r in position_results {
+        println!("{},{},{},{}", r.index, r.from_start, r.num_correct, r.num_error);
     }
 }
