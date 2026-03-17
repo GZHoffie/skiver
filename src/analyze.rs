@@ -76,23 +76,4 @@ pub fn analyze(args: AnalyzeArgs) {
     println!("{}", header_str(!args.forward_only));
     let spectrum_str = spectrum_to_str(&spectrum, !args.forward_only);
     println!("{}", spectrum_str);
-
-    
-    
-    /*
-    let mut vmer_set = VmerSet::new(args.v, false);
-    for file in &args.files {
-        vmer_set.add_file_first_pass(file, args.c);
-    }
-    let relevant_values = vmer_set._get_relevant_values(args.threshold);
-    let mut value_counts: HashMap<u64, u32> = HashMap::new();
-    for file in &args.files {
-        vmer_set.add_file_second_pass(file, &mut value_counts, &relevant_values);
-    }
-    vmer_set.add_value_counts(&value_counts);
-    let stats = vmer_set.get_stats(args.threshold);
-
-    let spectrum = error_profile(&stats, false);
-    output_error_spectrum(&spectrum, args.v);
-    */
 }

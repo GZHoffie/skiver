@@ -387,7 +387,7 @@ impl KVmerSet {
             // find the error and consensus up to v counts
             for v in 1..=self.value_size {
                 let consensus_up_to_v = self._num_consensus_up_to_v(max_value, v, self.bidirectional, value_map);
-                consensus_up_to_v_counts[(v - MIN_VALUE_FOR_ERROR_ESTIMATION) as usize].push(consensus_up_to_v);
+                consensus_up_to_v_counts[(v - 1) as usize].push(consensus_up_to_v);
             }
 
             let mut num_neighbors = 0;
@@ -586,7 +586,7 @@ impl KVmerSet {
         }
         // for p vs. v regression
         if show_error_vs_v {
-            for v in MIN_VALUE_FOR_ERROR_ESTIMATION..=self.value_size {
+            for v in 1..=self.value_size {
                 write!(writer, ",consensus_count_up_to_v{}", v).unwrap();
             }
         }
