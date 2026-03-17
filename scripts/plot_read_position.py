@@ -34,7 +34,7 @@ def plot_read_position(read_position_file, output_file, num_bases=100):
         ax_line.plot(x, y, color=color, linewidth=1.5, alpha=0.6, label="Error rate")
 
         # Smoothed line (uniform filter, window = 5% of num_bases, min 3)
-        window = max(3, num_bases // 5)
+        window = max(3, num_bases // 10)
         if len(y) >= window:
             y_smooth = uniform_filter1d(y, size=window)
             ax_line.plot(x, y_smooth, color=color_smooth, linewidth=2.5,

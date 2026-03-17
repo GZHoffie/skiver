@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 
 
-def plot_qscore_calibration(calibration_file, output_file, log_scale=False):
+def plot_qscore_calibration(calibration_file, output_file, log_scale=False, min_coverage=100):
     color_empirical  = 'slategray'
     color_theoretical = 'indianred'
 
@@ -13,10 +13,13 @@ def plot_qscore_calibration(calibration_file, output_file, log_scale=False):
     df = df[(df["num_correct"] + df["num_error"]) > 0].copy()
     df["num_total"] = df["num_correct"] + df["num_error"]
 
+    # Filter by minimum coverage
+    df = df[df["num_total"] >= min_coverage]
+
     q_vals = df["qscore"].values
     emp_rate = df["error_rate"].values
-    ci_lower = df["5th_percentile"].values
-    ci_upper = df["95th_percentile"].values
+    #ci_lower = df["5th_percentile"].values
+    #ci_upper = df["95th_percentile"].values
     counts   = df["num_total"].values
 
     # Theoretical Phred error rate: P(error) = 10^(-Q/10)
@@ -37,8 +40,8 @@ def plot_qscore_calibration(calibration_file, output_file, log_scale=False):
                  linestyle='--', linewidth=3, label="Theoretical ($10^{-Q/10}$)", zorder=3)
 
     # Confidence band
-    ax_main.fill_between(q_vals, ci_lower, ci_upper,
-                         color=color_empirical, alpha=0.25, label="5%–95% CI")
+    #ax_main.fill_between(q_vals, ci_lower, ci_upper,
+    #                     color=color_empirical, alpha=0.25, label="5%–95% CI")
 
     # Empirical line
     ax_main.plot(q_vals, emp_rate, color=color_empirical,
@@ -61,7 +64,7 @@ def plot_qscore_calibration(calibration_file, output_file, log_scale=False):
     ax_hist.bar(q_vals, counts, width=0.8, color=color_empirical, alpha=0.7)
     #ax_hist.set_xlim(q_min, q_max)
     ax_hist.set_xlabel("Phred quality score ($Q$)")
-    ax_hist.set_ylabel("# bases")
+    ax_hist.set_ylabel("# bases used for estimation")
     ax_hist.spines['top'].set_visible(False)
     ax_hist.spines['right'].set_visible(False)
 
@@ -78,11 +81,13 @@ if __name__ == "__main__":
     parser.add_argument("calibration_file",
                         help="CSV produced by `skiver calibrate` "
                              "(columns: qscore, empirical_qscore, num_correct, num_error, "
-                             "error_rate, 5th_percentile, 95th_percentile).")
+                             "error_rate).")
     parser.add_argument("output_file", help="Path to save the output plot image.")
     parser.add_argument("--log", action="store_true",
                         help="Use logarithmic scale for the y-axis (default: False).")
+    parser.add_argument("--min-coverage", type=int, default=100,
+                        help="Minimum coverage for plotting data points (default: 100).")
     args = parser.parse_args()
 
     plot_qscore_calibration(args.calibration_file, args.output_file,
-                            log_scale=args.log)
+                            log_scale=args.log, min_coverage=args.min_coverage)

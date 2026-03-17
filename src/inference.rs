@@ -900,6 +900,7 @@ impl ErrorAnalyzer {
 
             fs::write(format!("{}.kvmer.csv", prefix), stats.error_summary.to_csv(Some(&indices))).unwrap();
             fs::write(format!("{}.summary_error_spectrum.csv", prefix), stats.error_spectrum.to_csv(Some(&indices))).unwrap();
+            fs::write(format!("{}.summary_error_spectrum_dependence_on_v.csv", prefix), stats.error_spectrum.to_dependence_on_v_csv(Some(&indices))).unwrap();
             fs::write(format!("{}.summary_phred.csv", prefix), stats.phred_summary.to_csv(Some(&indices))).unwrap();
             fs::write(format!("{}.summary_read_position.csv", prefix), stats.read_position_summary.to_csv(Some(&indices))).unwrap();
         }

@@ -224,7 +224,7 @@ impl KVmerSet {
         (key_containment, key_value_containment)
     }
 
-    pub fn get_stats(&self, threshold: u32) -> KVmerStats {
+    pub fn get_stats(&self, threshold: u32, first_base_only: bool) -> KVmerStats {
         let mut keys: Vec<u64> = Vec::new();
         let mut consensus_values: Vec<u64> = Vec::new();
         let mut error_summary = ErrorSummary::new(self.value_size as usize);
@@ -254,9 +254,9 @@ impl KVmerSet {
             if error_summary.update(*key, max_value, self.key_size, self.value_size, self.bidirectional, value_map) {
                 keys.push(*key);
                 consensus_values.push(max_value);
-                error_spectrum.update(error_summary.error_counts_per_key.last().unwrap().clone());
-                phred_summary.update(max_value, self.value_size, value_map);
-                read_position_summary.update(max_value, self.value_size, value_map);
+                error_spectrum.update(error_summary.error_counts_per_key.last().unwrap().clone(), error_summary.forward_error_counts_per_key.last().unwrap().clone());
+                phred_summary.update(max_value, self.value_size, value_map, first_base_only);
+                read_position_summary.update(max_value, self.value_size, value_map, first_base_only);
             }
         }
 
@@ -273,7 +273,7 @@ impl KVmerSet {
     }
 
     #[allow(unused)]
-    pub fn get_stats_with_reference(&self, threshold: u32, reference: &KVmerSet) -> KVmerStats {
+    pub fn get_stats_with_reference(&self, threshold: u32, reference: &KVmerSet, first_base_only: bool) -> KVmerStats {
         let mut keys: Vec<u64> = Vec::new();
         let mut consensus_values: Vec<u64> = Vec::new();
         let mut error_summary = ErrorSummary::new(self.value_size as usize);
@@ -311,9 +311,9 @@ impl KVmerSet {
             if error_summary.update(*key, consensus_value, self.key_size, self.value_size, self.bidirectional, value_map) {
                 keys.push(*key);
                 consensus_values.push(consensus_value);
-                error_spectrum.update(error_summary.error_counts_per_key.last().unwrap().clone());
-                phred_summary.update(consensus_value, self.value_size, value_map);
-                read_position_summary.update(consensus_value, self.value_size, value_map);
+                error_spectrum.update(error_summary.error_counts_per_key.last().unwrap().clone(), error_summary.forward_error_counts_per_key.last().unwrap().clone());
+                phred_summary.update(consensus_value, self.value_size, value_map, first_base_only);
+                read_position_summary.update(consensus_value, self.value_size, value_map, first_base_only);
             }
         }
 

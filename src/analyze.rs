@@ -52,11 +52,11 @@ pub fn analyze(args: AnalyzeArgs) {
         reference_kvmer_set.add_file_to_kvmer_set(reference, args.c, args.trim_front, args.trim_back);
         info!("Loaded reference file: {}", reference);
 
-        stats = kvmer_set.get_stats_with_reference(lower_bound, &reference_kvmer_set);
+        stats = kvmer_set.get_stats_with_reference(lower_bound, &reference_kvmer_set, args.first_base_only);
     } else {
         let lower_bound = args.lower_bound.unwrap_or(10);
         //println!("Error rate: {}", kvmer_set.get_stats(args.threshold));
-        stats = kvmer_set.get_stats(lower_bound);
+        stats = kvmer_set.get_stats(lower_bound, args.first_base_only);
     }
     // if reference is set, the filter should be disabled
     // [FIXME] enable --use-all by default

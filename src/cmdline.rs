@@ -100,7 +100,7 @@ pub struct AnalyzeArgs {
     //#[clap(short = 't', long = "threads", default_value_t = 4, help_heading = "ALGORITHM", help = "Number of threads.")]
     //pub threads: usize,
 
-    #[clap(short = 'o', long = "output-prefix", help_heading = "OUTPUT", help = "Output prefix. When set, writes <prefix>.csv (analysis), <prefix>.summary_error.csv, <prefix>.summary_error_spectrum.csv, <prefix>.summary_phred.csv, and <prefix>.summary_read_position.csv.")]
+    #[clap(short = 'o', long = "output-prefix", help_heading = "OUTPUT", help = "Output prefix. When set, writes <prefix>.csv (analysis), <prefix>.summary_error.csv, <prefix>.summary_error_spectrum.csv, <prefix>.summary_error_spectrum_dependence_on_v.csv, <prefix>.summary_phred.csv, and <prefix>.summary_read_position.csv.")]
     pub output_prefix: Option<String>,
 
     #[clap(long, default_value_t = String::from("sum_ratio"), hidden = true, help = "One of 'slope', 'linear_fit', 'ratio_mean', 'sum_ratio'.")]
@@ -108,6 +108,9 @@ pub struct AnalyzeArgs {
 
     #[clap(long, default_value_t = String::from("weibull"), help = "Model used to fit the hazard rates vs. t. Should be one of 'constant' (assuming that the hazard rate is constant over t), 'weibull' (assuming T follows a discrete Weibull distribution).")]
     pub hazard_model: String,
+
+    #[clap(long = "first-base-only", hidden = true, help = "In ReadPositionSummary and PhredScoreSummary, consider only the first base of each value instead of all bases up to an error.")]
+    pub first_base_only: bool,
 }
 
 #[derive(Args, Default)]

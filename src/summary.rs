@@ -15,6 +15,7 @@ pub struct ErrorSummary {
     pub value_strings: Vec<String>,
     pub homopolymer_lengths: Vec<u32>,
     pub error_counts_per_key: Vec<HashMap<NeighborInfo, u32>>,
+    pub forward_error_counts_per_key: Vec<HashMap<NeighborInfo, u32>>,
     v: usize,
 }
 
@@ -29,6 +30,7 @@ impl ErrorSummary {
             value_strings: Vec::new(),
             homopolymer_lengths: Vec::new(),
             error_counts_per_key: Vec::new(),
+            forward_error_counts_per_key: Vec::new(),
             v,
         }
     }
@@ -99,6 +101,7 @@ impl ErrorSummary {
             .collect();
 
         let mut error_count_map: HashMap<NeighborInfo, u32> = HashMap::new();
+        let mut forward_error_count_map: HashMap<NeighborInfo, u32> = HashMap::new();
         let mut num_neighbors: u32 = 0;
         for (value, info_list) in value_map {
             let count = info_list.len() as u32;
@@ -106,6 +109,8 @@ impl ErrorSummary {
                 if let Some(info) = neighbors.get(value) {
                     *error_count_map.entry(*info).or_insert(0) += count;
                     num_neighbors += count;
+                    let forward_count = info_list.iter().filter(|i| i.is_forward).count() as u32;
+                    *forward_error_count_map.entry(*info).or_insert(0) += forward_count;
                 }
             }
         }
@@ -123,6 +128,7 @@ impl ErrorSummary {
         self.value_strings.push(value_string);
         self.homopolymer_lengths.push(homopolymer_length);
         self.error_counts_per_key.push(error_count_map);
+        self.forward_error_counts_per_key.push(forward_error_count_map);
 
         true
     }
@@ -176,6 +182,7 @@ impl ErrorSummary {
 /// Corresponds to `KVmerStats` field: `error_counts`.
 pub struct ErrorSpectrumSummary {
     pub error_counts: Vec<HashMap<NeighborInfo, u32>>,
+    pub forward_error_counts: Vec<HashMap<NeighborInfo, u32>>,
     v: usize,
 }
 
@@ -183,18 +190,20 @@ impl ErrorSpectrumSummary {
     pub fn new(v: usize) -> Self {
         ErrorSpectrumSummary {
             error_counts: Vec::new(),
+            forward_error_counts: Vec::new(),
             v,
         }
     }
 
     /// Accumulate one key's per-operation error counts.
-    pub fn update(&mut self, error_map: HashMap<NeighborInfo, u32>) {
+    pub fn update(&mut self, error_map: HashMap<NeighborInfo, u32>, forward_error_map: HashMap<NeighborInfo, u32>) {
         self.error_counts.push(error_map);
+        self.forward_error_counts.push(forward_error_map);
     }
 }
 
 impl ErrorSpectrumSummary {
-    pub fn to_csv(&self, indices: Option<&[usize]>) -> String {
+    pub fn to_dependence_on_v_csv(&self, indices: Option<&[usize]>) -> String {
         use std::fmt::Write;
         let all: Vec<usize>;
         let indices = match indices {
@@ -240,6 +249,49 @@ impl ErrorSpectrumSummary {
         }
         out
     }
+
+    pub fn to_csv(&self, indices: Option<&[usize]>) -> String {
+        use std::fmt::Write;
+        let all: Vec<usize>;
+        let indices = match indices {
+            Some(idx) => idx,
+            None => { all = (0..self.error_counts.len()).collect(); &all }
+        };
+        // Aggregate total and forward-strand counts by (op, prev_base, next_base).
+        let mut totals: HashMap<(EditOperation, u8, u8), u64> = HashMap::new();
+        let mut forward_totals: HashMap<(EditOperation, u8, u8), u64> = HashMap::new();
+        for &i in indices {
+            for (ni, &count) in &self.error_counts[i] {
+                *totals.entry((ni.op, ni.prev_base, ni.next_base)).or_insert(0) += count as u64;
+            }
+            for (ni, &count) in &self.forward_error_counts[i] {
+                *forward_totals.entry((ni.op, ni.prev_base, ni.next_base)).or_insert(0) += count as u64;
+            }
+        }
+
+        let mut out = String::new();
+        writeln!(out, "operation,prev_base,next_base,total,forward").unwrap();
+
+        for &op in ALL_OPERATIONS.iter() {
+            for prev_base in 0u8..4 {
+                for next_base in 0u8..4 {
+                    let key = (op, prev_base, next_base);
+                    let total = totals.get(&key).copied().unwrap_or(0);
+                    if total > 0 {
+                        let forward = forward_totals.get(&key).copied().unwrap_or(0);
+                        writeln!(out, "{},{},{},{},{}",
+                            op,
+                            SEQ_TO_CHAR[prev_base as usize],
+                            SEQ_TO_CHAR[next_base as usize],
+                            total,
+                            forward,
+                        ).unwrap();
+                    }
+                }
+            }
+        }
+        out
+    }
 }
 
 /// Phred quality-score calibration statistics.
@@ -263,7 +315,8 @@ impl PhredScoreSummary {
     }
 
     /// Accumulate one key's Phred calibration data.
-    pub fn update(&mut self, consensus: u64, value_size: u8, value_map: &HashMap<u64, Vec<ValueInfo>>) {
+    /// If `first_base_only` is true, only the first base of each value is considered.
+    pub fn update(&mut self, consensus: u64, value_size: u8, value_map: &HashMap<u64, Vec<ValueInfo>>, first_base_only: bool) {
         let mut key_correct: HashMap<u8, u64> = HashMap::new();
         let mut key_error: HashMap<u8, u64> = HashMap::new();
         for (value, info_list) in value_map {
@@ -271,7 +324,8 @@ impl PhredScoreSummary {
                 if info.qual.is_empty() {
                     continue;
                 }
-                for p in 0..value_size as usize {
+                let range = if first_base_only { 0..1 } else { 0..value_size as usize };
+                for p in range {
                     let bit_shift = 2 * (value_size as usize - 1 - p);
                     let value_base     = (value     >> bit_shift) & 0b11;
                     let consensus_base = (consensus >> bit_shift) & 0b11;
@@ -312,7 +366,8 @@ impl ReadPositionSummary {
         }
     }
 
-    pub fn update(&mut self, consensus: u64, value_size: u8, value_map: &HashMap<u64, Vec<ValueInfo>>) {
+    /// If `first_base_only` is true, only the first base of each value is considered.
+    pub fn update(&mut self, consensus: u64, value_size: u8, value_map: &HashMap<u64, Vec<ValueInfo>>, first_base_only: bool) {
         let mut correct_from_start: HashMap<u32, u64> = HashMap::new();
         let mut correct_from_end: HashMap<u32, u64> = HashMap::new();
         let mut error_from_start: HashMap<u32, u64> = HashMap::new();
@@ -322,7 +377,8 @@ impl ReadPositionSummary {
                 if info.qual.is_empty() {
                     continue;
                 }
-                for p in 0..value_size as usize {
+                let range = if first_base_only { 0..1 } else { 0..value_size as usize };
+                for p in range {
                     let bit_shift = 2 * (value_size as usize - 1 - p);
                     let value_base     = (value     >> bit_shift) & 0b11;
                     let consensus_base = (consensus >> bit_shift) & 0b11;
