@@ -4,7 +4,7 @@ use needletail::parse_fastx_file;
 use rust_htslib::{bam, bam::Read as BamRead}; // Added rust-htslib for BAM/SAM support
 use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
-use crate::{seeding::*};
+use crate::{seeding::*, types::*};
 
 pub fn map(args: crate::cmdline::MapArgs) {
     SimpleLogger::new().with_level(log::LevelFilter::Info).init().unwrap();
@@ -78,26 +78,21 @@ impl KmerSet {
         let end = string.len().saturating_sub(trim_back);
 
         // extract sketched kv-mers from the given sequence string
+        let mut _value_info_vec: Vec<ValueInfo> = Vec::new();
         #[cfg(any(target_arch = "x86_64"))]
         {
             if is_x86_feature_detected!("avx2") {
                 use crate::avx2_seeding::*;
                 unsafe {
-                    let mut _si: Vec<u32> = Vec::new();
-                    let mut _if: Vec<bool> = Vec::new();
-                    extract_markers_avx2_masked(&string[start..end], kmer_vec, _value_vec, &mut _si, &mut _if, c, self.key_size as usize, 0 as usize, bidirectional);
+                    extract_markers_avx2_masked(&string[start..end], kmer_vec, _value_vec, &mut _value_info_vec, c, self.key_size as usize, 0 as usize, bidirectional);
                 }
             } else {
-                let mut _si: Vec<u32> = Vec::new();
-                let mut _if: Vec<bool> = Vec::new();
-                fmh_seeds_masked(&string[start..end], kmer_vec, _value_vec, &mut _si, &mut _if, c, self.key_size as usize, 0 as usize, bidirectional);
+                fmh_seeds_masked(&string[start..end], kmer_vec, _value_vec, &mut _value_info_vec, c, self.key_size as usize, 0 as usize, bidirectional);
             }
         }
         #[cfg(not(target_arch = "x86_64"))]
         {
-            let mut _si: Vec<u32> = Vec::new();
-            let mut _if: Vec<bool> = Vec::new();
-            fmh_seeds_masked(&string[start..end], kmer_vec, _value_vec, &mut _si, &mut _if, c, self.key_size as usize, 0 as usize, bidirectional);
+            fmh_seeds_masked(&string[start..end], kmer_vec, _value_vec, &mut _value_info_vec, c, self.key_size as usize, 0 as usize, bidirectional);
         }
     }
 

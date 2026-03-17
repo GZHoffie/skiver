@@ -9,16 +9,25 @@ use crate::huber::*;
 use log::info;
 use rand::Rng;
 
-
+/**
+ * Info of the estimated error rate and error spectrum
+ * Each field is a tuple of (estimate, (5th_percentile, 95th_percentile))
+ * where the confidence interval is estimated using bootstrap
+ */
 pub struct ErrorSpectrum {
+    // estimated Weibull parameters
     pub estimated_lambda: (f32, (f32, f32)),
     pub estimated_beta: (f32, (f32, f32)),
+
+    // estimated error rates
     pub per_base_error_rate: (f32, (f32, f32)),
     pub effective_error_rate: (f32, (f32, f32)),
 
+    // coverage information
     pub key_coverage: (f32, (f32, f32)),
     pub estimated_coverage: (f32, (f32, f32)),
 
+    // error spectrum
     pub snp_rate: HashMap<(EditOperation, u8, u8), u32>,
 
     pub bidirectional: bool,
