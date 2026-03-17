@@ -6,6 +6,7 @@ use crate::cmdline::AnalyzeArgs;
 use simple_logger::SimpleLogger;
 use log::{info, warn};
 use glob::glob;
+use std::fs;
 
 pub fn analyze(args: AnalyzeArgs) {
     SimpleLogger::new().with_level(log::LevelFilter::Info).init().unwrap();
@@ -57,22 +58,23 @@ pub fn analyze(args: AnalyzeArgs) {
         //println!("Error rate: {}", kvmer_set.get_stats(args.threshold));
         stats = kvmer_set.get_stats(lower_bound);
     }
-    if let Some(output_path) = &args.output_path {
-        kvmer_set.output_stats(output_path, &stats);
-    }
-
     // if reference is set, the filter should be disabled
     // [FIXME] enable --use-all by default
     if args.reference.is_some() && !args.use_all {
         warn!("If reference is provided, --use-all is recommended.");
     }
 
-
     let spectrum = analyzer.analyze(&stats);
+    let analysis_output = format!("{}\n{}", header_str(!args.forward_only), spectrum_to_str(&spectrum, !args.forward_only));
 
-    // output to stdout a csv file
-    // [TODO] allow output a separate line per file
-    println!("{}", header_str(!args.forward_only));
-    let spectrum_str = spectrum_to_str(&spectrum, !args.forward_only);
-    println!("{}", spectrum_str);
+    if let Some(prefix) = &args.output_prefix {
+        fs::write(format!("{}.csv", prefix), &analysis_output).unwrap();
+        fs::write(format!("{}.summary_error.csv", prefix), format!("{}", stats.error_summary)).unwrap();
+        fs::write(format!("{}.summary_error_spectrum.csv", prefix), format!("{}", stats.error_spectrum)).unwrap();
+        fs::write(format!("{}.summary_phred.csv", prefix), format!("{}", stats.phred_summary)).unwrap();
+        fs::write(format!("{}.summary_read_position.csv", prefix), format!("{}", stats.read_position_summary)).unwrap();
+        info!("Output written to {}.{{csv,summary_error.csv,summary_error_spectrum.csv,summary_phred.csv,summary_read_position.csv}}", prefix);
+    } else {
+        println!("{}", analysis_output);
+    }
 }

@@ -104,17 +104,14 @@ pub struct AnalyzeArgs {
     //#[clap(short = 't', long = "threads", default_value_t = 4, help_heading = "ALGORITHM", help = "Number of threads.")]
     //pub threads: usize,
 
-    #[clap(short = 'o', long = "verbose-output", help_heading = "OUTPUT", help = "Output file.")]
-    pub output_path: Option<String>,
+    #[clap(short = 'o', long = "output-prefix", help_heading = "OUTPUT", help = "Output prefix. When set, writes <prefix>.csv (analysis), <prefix>.summary_error.csv, <prefix>.summary_error_spectrum.csv, <prefix>.summary_phred.csv, and <prefix>.summary_read_position.csv.")]
+    pub output_prefix: Option<String>,
 
     #[clap(long, default_value_t = String::from("sum_ratio"), hidden = true, help = "One of 'slope', 'linear_fit', 'ratio_mean', 'sum_ratio'.")]
     pub estimation_method: String,
 
     #[clap(long, default_value_t = String::from("weibull"), help = "Model used to fit the hazard rates vs. t. Should be one of 'constant' (assuming that the hazard rate is constant over t), 'weibull' (assuming T follows a discrete Weibull distribution).")]
     pub hazard_model: String,
-
-    #[clap(long, help_heading = "OUTPUT", help = "Output the estimated hazard ratio and their confidence intervals as a csv file.")]
-    pub hazard_rate: Option<String>,
 }
 
 #[derive(Args, Default)]

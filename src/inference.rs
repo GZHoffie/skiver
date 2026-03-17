@@ -877,11 +877,12 @@ impl ErrorAnalyzer {
         let per_base_error_rate = 1.0 - (-lambda).exp();
         let per_base_error_rate_ci = (1.0 - (-(lambda_ci.0)).exp(), 1.0 - (-(lambda_ci.1)).exp());
 
-        if let Some(hazard_ratio_output) = &self.args.hazard_rate {
+        if let Some(prefix) = &self.args.output_prefix {
             use std::fs::File;
             use std::io::{BufWriter, Write};
 
-            let file = File::create(hazard_ratio_output).expect("Could not create hazard ratio output file.");
+            let hazard_ratio_output = format!("{}.hazard_rate.csv", prefix);
+            let file = File::create(&hazard_ratio_output).expect("Could not create hazard ratio output file.");
             let mut writer = BufWriter::new(file);
 
             writeln!(writer, "t,num_candidates,num_survival,hazard_ratio,5th_percentile,95th_percentile").expect("Could not write to hazard ratio output file.");

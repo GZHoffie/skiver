@@ -5,8 +5,7 @@ use serde::{Serialize, Deserialize};
 //use rayon::prelude::*;
 
 use std::fs::File;
-use std::io::BufWriter;
-use std::io::{prelude::*, BufReader};
+use std::io::{BufWriter, BufReader};
 
 use std::collections::HashMap;
 
@@ -332,11 +331,6 @@ impl KVmerSet {
             phred_summary,
             read_position_summary,
         }
-    }
-
-    pub fn output_stats(&self, output_path: &String, stats: &KVmerStats) {
-        let mut writer = File::create(&output_path).unwrap();
-        write!(writer, "{}", stats.error_summary).unwrap();
     }
 
     pub fn dump(&self, output_dir: &str) {
