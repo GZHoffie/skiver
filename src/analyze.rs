@@ -3,8 +3,9 @@ use crate::utils::*;
 use crate::inference::*;
 use crate::cmdline::AnalyzeArgs;
 
+use clap::error;
 use simple_logger::SimpleLogger;
-use log::{info, warn};
+use log::{info, warn, error};
 use glob::glob;
 use std::fs;
 
@@ -89,6 +90,6 @@ pub fn analyze(args: AnalyzeArgs) {
         fs::write(format!("{}.summary_error_rate.csv", prefix), &analysis_output).unwrap();
         info!("Output written to prefix {}.", prefix);
     } else {
-        println!("{}", analysis_output);
+        error!("No output prefix provided. Use -o or --output-prefix to specify the output file prefix for the analysis results.");
     }
 }

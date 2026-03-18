@@ -79,22 +79,19 @@ pub struct AnalyzeArgs {
     #[clap(short = 'e', long = "outlier-threshold", default_value_t = 3.0, help_heading = "ALGORITHM", help = "The multiplier to the IQR for defining outliers.")]
     pub outlier_threshold: f32,
 
-    #[clap(long = "num-experiments", default_value_t = 100, help_heading = "ALGORITHM", help = "Number of experiments in bootstrapping for estimating the parameters.")]
+    #[clap(long = "num-experiments", default_value_t = 100, hidden = true, help_heading = "ALGORITHM", help = "Number of experiments in bootstrapping for estimating the parameters.")]
     pub num_experiments: u32,
-
-    #[clap(long = "bootstrap-sample-rate", default_value_t = 0.1, help_heading = "ALGORITHM", help = "Proportion of data points to sample per experiment in bootstrapping.")]
-    pub bootstrap_sample_rate: f32,
 
     #[clap(short = 'r', long = "reference", help_heading = "ALGORITHM", help = "Reference genomes.")]
     pub reference: Option<String>,
 
-    #[clap(short = 'f', long = "trim-front", default_value_t = 0, help_heading = "INPUT", help = "Number of bases to trim from the start of each read.")]
+    #[clap(short = 'f', long = "trim-front", hidden = true, default_value_t = 0, help_heading = "INPUT", help = "Number of bases to trim from the start of each read.")]
     pub trim_front: usize,
 
-    #[clap(short = 'b', long = "trim-back", default_value_t = 0, help_heading = "INPUT", help = "Number of bases to trim from the end of each read.")]
+    #[clap(short = 'b', long = "trim-back", hidden = true, default_value_t = 0, help_heading = "INPUT", help = "Number of bases to trim from the end of each read.")]
     pub trim_back: usize,
 
-    #[clap(long, default_value_t = 2, help_heading = "ALGORITHM", help = "Number of estimated hazard ratios to ignore from the largest v.")]
+    #[clap(long, default_value_t = 2, hidden = true, help_heading = "ALGORITHM", help = "Number of estimated hazard ratios to ignore from the largest v.")]
     pub ignore_last_hazard_ratios: usize,
 
     //#[clap(short = 't', long = "threads", default_value_t = 4, help_heading = "ALGORITHM", help = "Number of threads.")]
