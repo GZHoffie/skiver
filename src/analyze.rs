@@ -15,19 +15,18 @@ pub fn analyze(args: AnalyzeArgs) {
 
     //info!("Using {} threads for analysis.", args.threads);
 
-    let mut kvmer_set = KVmerSet::new(args.k, args.v, !args.forward_only);
-    
-    // Read query files
-    info!("Processing query files...");
+    // Expand globs and categorize files before processing so we can auto-determine -c
+    let mut raw_files: Vec<String> = Vec::new();
+    let mut sketch_files: Vec<String> = Vec::new();
     for file in &args.files {
         for entry in glob(file).expect("Failed to read glob pattern") {
             match entry {
                 Ok(path) => {
-                    let file_str = path.to_str().unwrap();
-                    if is_fastx_file(file_str) {
-                        kvmer_set.add_file_to_kvmer_set(file_str, args.c, args.trim_front, args.trim_back);
-                    } else if is_sketch_file(file_str) {
-                        kvmer_set.load(file_str);
+                    let file_str = path.to_str().unwrap().to_string();
+                    if is_fastx_file(&file_str) {
+                        raw_files.push(file_str);
+                    } else if is_sketch_file(&file_str) {
+                        sketch_files.push(file_str);
                     } else {
                         warn!("File format not recognized for file: {}. Skipping.", file_str);
                     }
@@ -35,6 +34,25 @@ pub fn analyze(args: AnalyzeArgs) {
                 Err(e) => warn!("Error reading file: {:?}", e),
             }
         }
+    }
+
+    let c = args.c.unwrap_or_else(|| {
+        let raw_refs: Vec<&str> = raw_files.iter().map(|s| s.as_str()).collect();
+        let (auto_c, est_file_size) = estimate_c_from_raw_files(&raw_refs);
+        info!("Total estimated input sequence file size (decompressed): {:.2} GB", est_file_size as f64 / (1024.0 * 1024.0 * 1024.0));
+        info!("Auto-determined subsampling rate: -c {}", auto_c);
+        auto_c
+    });
+
+    let mut kvmer_set = KVmerSet::new(args.k, args.v, !args.forward_only);
+
+    // Read query files
+    info!("Processing query files...");
+    for file_str in &raw_files {
+        kvmer_set.add_file_to_kvmer_set(file_str, c, args.trim_front, args.trim_back);
+    }
+    for file_str in &sketch_files {
+        kvmer_set.load(file_str);
     }
     info!("Finished processing query files.");
 
@@ -49,7 +67,7 @@ pub fn analyze(args: AnalyzeArgs) {
         let lower_bound = args.lower_bound.unwrap_or(0);
 
         let mut reference_kvmer_set = KVmerSet::new(args.k, args.v, true);
-        reference_kvmer_set.add_file_to_kvmer_set(reference, args.c, args.trim_front, args.trim_back);
+        reference_kvmer_set.add_file_to_kvmer_set(reference, c, args.trim_front, args.trim_back);
         info!("Loaded reference file: {}", reference);
 
         stats = kvmer_set.get_stats_with_reference(lower_bound, &reference_kvmer_set, args.first_base_only);

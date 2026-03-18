@@ -120,3 +120,33 @@ pub fn is_sketch_file(file_path: &str) -> bool {
     let lower_path = file_path.to_lowercase();
     lower_path.ends_with(".kvmer")
 }
+
+/**
+ * Estimate a suitable subsampling rate `-c` from raw sequencing input files.
+ * For .gz files, the decompressed size is estimated as 4x the compressed size.
+ * Returns ceiling(total_estimated_size / 16G) * 1000, with a minimum of 1000.
+ * 
+ * This is chosen so that the size of the memory usage is roughly under 2GB, for 
+ * efficient loading and in-memory processing.
+ * 
+ * Returns (used_c, total_estimated_size).
+ */
+pub fn estimate_c_from_raw_files(files: &[&str]) -> (usize, u64) {
+    const SIXTEEN_GB: u64 = 16 * 1024 * 1024 * 1024;
+    const GZ_FACTOR: u64 = 4; // Estimated decompressed size is 4x compressed size for .gz files
+
+    let total_size: u64 = files.iter()
+        .filter(|f| is_fastx_file(f))
+        .map(|f| {
+            let size = std::fs::metadata(f).map(|m| m.len()).unwrap_or(0);
+            if f.to_lowercase().ends_with(".gz") { size * GZ_FACTOR } else { size }
+        })
+        .sum();
+
+    if total_size == 0 {
+        return (1000, 0);
+    }
+
+    let chunks = total_size.div_ceil(SIXTEEN_GB);
+    ((chunks as usize) * 1000, total_size)
+}

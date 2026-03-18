@@ -1,6 +1,7 @@
 
 
 use crate::kvmer::*;
+use crate::utils::estimate_c_from_raw_files;
 use simple_logger::SimpleLogger;
 use log::{info, error};
 use crate::cmdline::SketchArgs;
@@ -26,11 +27,20 @@ pub fn sketch(args: SketchArgs) {
     std::fs::remove_file(output).ok();
 
     //rayon::ThreadPoolBuilder::new().num_threads(args.threads).build_global().unwrap();
+
+    let c = args.c.unwrap_or_else(|| {
+        let raw_refs: Vec<&str> = args.files.iter().map(|s| s.as_str()).collect();
+        let (auto_c, est_file_size) = estimate_c_from_raw_files(&raw_refs);
+        info!("Total estimated input sequence file size (decompressed): {:.2} GB", est_file_size as f64 / (1024.0 * 1024.0 * 1024.0));
+        info!("Auto-determined subsampling rate: -c {}", auto_c);
+        auto_c
+    });
+
     info!("Processing query files...");
-    
+
     let mut kvmer_set = KVmerSet::new(args.k, args.v, !args.forward_only);
     for file in &args.files {
-        kvmer_set.add_file_to_kvmer_set(file, args.c, args.trim_front, args.trim_back);
+        kvmer_set.add_file_to_kvmer_set(file, c, args.trim_front, args.trim_back);
     }
     info!("Finished processing query files.");
 

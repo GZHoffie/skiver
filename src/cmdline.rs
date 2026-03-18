@@ -33,8 +33,8 @@ pub struct SketchArgs {
     #[clap(short, default_value_t = 13, help_heading = "ALGORITHM", help ="Length of values.")]
     pub v: u8,
 
-    #[clap(short, default_value_t = 1000, help_heading = "ALGORITHM", help = "Subsampling rate.")]
-    pub c: usize,
+    #[clap(short, help_heading = "ALGORITHM", help = "Subsampling rate. If not set, automatically determined as ceiling(total_input_size / 16G) * 1000 (decompressed size estimated as 4x for .gz files).")]
+    pub c: Option<usize>,
 
     #[clap(short = 'f', default_value_t = 0, help_heading = "INPUT", help = "Number of bases to trim from the start of each read.")]
     pub trim_front: usize,
@@ -64,8 +64,8 @@ pub struct AnalyzeArgs {
     #[clap(short = 'v', default_value_t = 13, help_heading = "ALGORITHM", help ="Length of values.")]
     pub v: u8,
 
-    #[clap(short = 'c', default_value_t = 1000, help_heading = "ALGORITHM", help = "Subsampling rate.")]
-    pub c: usize,
+    #[clap(short = 'c', help_heading = "ALGORITHM", help = "Subsampling rate. If not set, automatically determined as ceiling(total_input_size / 16G) * 1000 (decompressed size estimated as 4x for .gz files).")]
+    pub c: Option<usize>,
 
     #[clap(short = 'l', long = "lower-bound", help_heading = "ALGORITHM", help = "Lower bound for the number of times the consensus appears in the read for it to be considered in the profiling. Default: 0 when the reference ('-r') is provided, 10 otherwise.")]
     pub lower_bound: Option<u32>,
