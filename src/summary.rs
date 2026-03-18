@@ -13,6 +13,8 @@ pub struct ErrorSummary {
     pub consensus_up_to_v_counts: Vec<Vec<u32>>,
     pub key_strings: Vec<String>,
     pub value_strings: Vec<String>,
+    pub second_value_strings: Vec<String>,
+    pub second_counts: Vec<u32>,
     pub homopolymer_lengths: Vec<u32>,
     pub error_counts_per_key: Vec<HashMap<NeighborInfo, u32>>,
     pub forward_error_counts_per_key: Vec<HashMap<NeighborInfo, u32>>,
@@ -28,6 +30,8 @@ impl ErrorSummary {
             consensus_up_to_v_counts: vec![Vec::new(); v],
             key_strings: Vec::new(),
             value_strings: Vec::new(),
+            second_value_strings: Vec::new(),
+            second_counts: Vec::new(),
             homopolymer_lengths: Vec::new(),
             error_counts_per_key: Vec::new(),
             forward_error_counts_per_key: Vec::new(),
@@ -115,6 +119,15 @@ impl ErrorSummary {
             }
         }
 
+        // find second most common value (highest-count non-consensus value)
+        let second = value_map.iter()
+            .filter(|&(&v, _)| v != consensus)
+            .max_by_key(|(_, info_list)| info_list.len());
+        let (second_value_string, second_count) = match second {
+            Some((&v, info_list)) => (Self::to_kmer_string(v, value_size), info_list.len() as u32),
+            None => (String::new(), 0),
+        };
+
         // store
         self.consensus_counts.push(consensus_count);
         self.total_counts.push(sum_count);
@@ -126,6 +139,8 @@ impl ErrorSummary {
         }
         self.key_strings.push(key_string);
         self.value_strings.push(value_string);
+        self.second_value_strings.push(second_value_string);
+        self.second_counts.push(second_count);
         self.homopolymer_lengths.push(homopolymer_length);
         self.error_counts_per_key.push(error_count_map);
         self.forward_error_counts_per_key.push(forward_error_count_map);
@@ -143,7 +158,7 @@ impl ErrorSummary {
             None => { all = (0..self.consensus_counts.len()).collect(); &all }
         };
         let mut out = String::new();
-        write!(out, "key,consensus_value,homopolymer_length,consensus_count,neighbor_count,total_count").unwrap();
+        write!(out, "key,consensus_value,homopolymer_length,consensus_count,neighbor_count,total_count,second_value,second_count").unwrap();
         for op in ALL_OPERATIONS {
             write!(out, ",{:?}", op).unwrap();
         }
@@ -153,13 +168,15 @@ impl ErrorSummary {
         writeln!(out).unwrap();
         for &i in indices {
             write!(out,
-                "{},{},{},{},{},{}",
+                "{},{},{},{},{},{},{},{}",
                 self.key_strings[i],
                 self.value_strings[i],
                 self.homopolymer_lengths[i],
                 self.consensus_counts[i],
                 self.neighbor_counts[i],
                 self.total_counts[i],
+                self.second_value_strings[i],
+                self.second_counts[i],
             ).unwrap();
             for op in ALL_OPERATIONS.iter() {
                 let total_count: u32 = self.error_counts_per_key[i].iter()
