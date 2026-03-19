@@ -23,31 +23,38 @@ def plot_coverage_histogram(verbose_output_file, skiver_report_file, output_file
     print("k =", k)
     print(f"Estimated S(k) = {est_S_k:.4f}")
 
-    key_coverages = np.array(coverage_df["total_count"].values) / est_S_k
+    all_coverages = np.array(coverage_df["total_count"].values) / est_S_k
+    passing_mask = coverage_df["passes_filter"].values.astype(bool)
+    passing_coverages = all_coverages[passing_mask]
 
-    # Exclude the top 0.01% of coverages for better visualization
-    coverage_threshold = np.percentile(key_coverages, 99.99)
-    key_coverages = key_coverages[key_coverages <= coverage_threshold]
+    # Exclude the top 0.01% of all coverages for better visualization
+    coverage_threshold = np.percentile(all_coverages, 99.99)
+    all_coverages = all_coverages[all_coverages <= coverage_threshold]
+    passing_coverages = passing_coverages[passing_coverages <= coverage_threshold]
 
     # Print the estimated true coverage (median, and 5-95th percentile)
-    median_coverage = np.median(key_coverages)
-    coverage_5th_percentile = np.percentile(key_coverages, 5)
-    coverage_95th_percentile = np.percentile(key_coverages, 95)
+    median_coverage = np.median(passing_coverages)
+    coverage_5th_percentile = np.percentile(passing_coverages, 5)
+    coverage_95th_percentile = np.percentile(passing_coverages, 95)
     print(f"Estimated true coverage (median): {median_coverage:.2f}")
     print(f"Estimated true coverage (5-95th percentile): {coverage_5th_percentile:.2f} ~ {coverage_95th_percentile:.2f}")
 
-
-
+    # Shared bins so both histograms align on the same ticks
+    bin_min = all_coverages.min()
+    bin_max = all_coverages.max()
+    bins = np.linspace(bin_min, bin_max, 101)  # 100 bins of equal width
 
     # Plot the histogram of key coverages
     plt.figure(figsize=(10, 4))
     plt.rc('axes.spines', **{'bottom':True, 'left':True, 'right':False, 'top':False})
-    sns.histplot(data=key_coverages, bins=100, color='slategray', edgecolor='white', stat='probability', log_scale=(False, True))
+    sns.histplot(data=all_coverages, bins=bins, color='slategray', edgecolor='none', stat='count', alpha=0.5, label='All keys')
+    sns.histplot(data=passing_coverages, bins=bins, color='steelblue', edgecolor='none', stat='count', alpha=0.7, label='Passing filter')
 
     plt.xlabel("Coverage")
-    plt.ylabel("Probability")
+    plt.ylabel("Count")
     plt.title("Estimated true coverage")
-    plt.yscale('log')  # Use logarithmic scale for better visibility of low-frequency bins
+    plt.yscale('log')
+    plt.legend()
     plt.tight_layout()
     plt.savefig(output_file)
 

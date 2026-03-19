@@ -92,11 +92,6 @@ impl ErrorSummary {
         let sum_count: u32 = value_map.values().map(|v| v.len() as u32).sum();
         let key_string = Self::to_kmer_string(key, key_size);
         let value_string = Self::to_kmer_string(consensus, value_size);
-        let (second_value_string, second_count) = value_map.iter()
-            .filter(|(v, _)| **v != consensus)
-            .max_by_key(|(_, info_list)| info_list.len())
-            .map(|(v, info_list)| (Self::to_kmer_string(*v, value_size), info_list.len() as u32))
-            .unwrap_or_else(|| (String::new(), 0));
         let homopolymer_length = Self::homopolymer_length(key, key_size, consensus, value_size);
 
         // neighbors filter: skip keys whose consensus is its own neighbor
@@ -157,13 +152,14 @@ impl ErrorSummary {
 impl ErrorSummary {
     pub fn to_csv(&self, indices: Option<&[usize]>) -> String {
         use std::fmt::Write;
-        let all: Vec<usize>;
-        let indices = match indices {
-            Some(idx) => idx,
-            None => { all = (0..self.consensus_counts.len()).collect(); &all }
+        use std::collections::HashSet;
+        let n = self.consensus_counts.len();
+        let index_set: HashSet<usize> = match indices {
+            Some(idx) => idx.iter().copied().collect(),
+            None => (0..n).collect(),
         };
         let mut out = String::new();
-        write!(out, "key,consensus_value,homopolymer_length,consensus_count,second_value,second_count,neighbor_count,total_count").unwrap();
+        write!(out, "key,consensus_value,passes_filter,homopolymer_length,consensus_count,neighbor_count,total_count").unwrap();
         for op in ALL_OPERATIONS {
             write!(out, ",{:?}", op).unwrap();
         }
@@ -171,15 +167,14 @@ impl ErrorSummary {
             write!(out, ",consensus_count_up_to_v{}", v).unwrap();
         }
         writeln!(out).unwrap();
-        for &i in indices {
+        for i in 0..n {
             write!(out,
-                "{},{},{},{},{},{},{},{}",
+                "{},{},{},{},{},{},{}",
                 self.key_strings[i],
                 self.value_strings[i],
+                index_set.contains(&i),
                 self.homopolymer_lengths[i],
                 self.consensus_counts[i],
-                self.second_value_strings[i],
-                self.second_counts[i],
                 self.neighbor_counts[i],
                 self.total_counts[i],
             ).unwrap();
