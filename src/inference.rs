@@ -983,16 +983,6 @@ pub fn spectrum_to_str(spectrum: &ErrorSpectrum, bidirectional: bool) -> String 
     result.push_str(&format!("{:.6},{:.6}~{:.6},", spectrum.key_coverage.0, (spectrum.key_coverage.1).0, (spectrum.key_coverage.1).1));
     result.push_str(&format!("{:.6},{:.6}~{:.6},", spectrum.estimated_coverage.0, (spectrum.estimated_coverage.1).0, (spectrum.estimated_coverage.1).1));
 
-    // SNP rates
-    for op in ALL_OPERATIONS.iter() {
-        for prev_base in 0..4 {
-            for next_base in 0..4 {
-                let count = spectrum.snp_rate.get(&(*op, prev_base, next_base)).unwrap_or(&0);
-                result.push_str(&format!("{},", count));
-            }
-        }
-    }
-
     // remove the last comma
     result.pop();
 
@@ -1009,15 +999,7 @@ pub fn header_str(bidirectional: bool) -> String {
     result.push_str("beta,beta_5-95th_percentile,");
 
     result.push_str("key_median_coverage,key_coverage_5-95th_percentile,");
-    result.push_str("true_median_coverage,true_coverage_5-95th_percentile,");
-    for op in ALL_OPERATIONS.iter() {
-        for prev_base in 0..4 {
-            for next_base in 0..4 {
-                result.push_str(&sbs96_str(&(*op, prev_base, next_base)));
-                result.push(',');
-            }
-        }
-    }
+    result.push_str("true_median_coverage,true_coverage_5-95th_percentile");
 
     result
 }

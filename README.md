@@ -3,9 +3,12 @@
   <img src="./logo.png" alt="Logo" width="300"/>
 </p>
 
-# Skiver: Alignment-free estimation of sequencing error rates and spectra using $(k,v)$-mer sketches
+# Skiver: Rapid quality control of genome sequencing datasets using $(k,v)$-mer sketches
 
-Skiver is a tool that aims to perform quality control for a set of reads, estimating the sequencing error rates/types, without relying on the quality scores or the need for the correct reference genome. It works the best for metagenomic samples where at least one genome has high coverage (>20 $\times$).
+> [!WARNING]  
+> This tool is under development and testing, not production-ready yet.
+
+Skiver is a tool that aims to perform quality control for a set of reads, estimating the sequencing error rates/types, without relying on the quality scores or the need for a reference genome. It works the best for metagenomic samples where at least one genome has high coverage (>20 $\times$).
 
 ## Installation
 
@@ -14,7 +17,7 @@ Skiver is a tool that aims to perform quality control for a set of reads, estima
 Simply download the executable from the latest release, via the following
 
 ```bash
-wget https://github.com/GZHoffie/skiver/releases/download/v0.0.1/skiver
+wget https://github.com/GZHoffie/skiver/releases/download/v0.2.0/skiver
 chmod +x ./skiver
 ./skiver
 ```
@@ -38,17 +41,13 @@ Basic commands:
 ```bash
 # sketch the read files + analyze
 skiver sketch [sequence_file_1] [sequence_file_2] ... -o sequences.kvmer
-skiver analyze sequences.kvmer > report.csv
+skiver analyze sequences.kvmer -o output_prefix
 
 # Alternatively, analyze the files directly
-skiver analyze [sequence_file_1] [sequence_file_2] ... > report.csv
+skiver analyze [sequence_file_1] [sequence_file_2] ... -o output_prefix
 
 # If a reference genome is provided
-skiver analyze [sequence_file_1] [sequence_file_2] ... -r [reference_file] > report.csv
-
-# Perform Phred score calibration
-skiver calibrate sequences.kvmer > calibration_report.csv
-skiver calibrate [sequence_file_1] [sequence_file_2] ... > calibration_report.csv
+skiver analyze [sequence_file_1] [sequence_file_2] ... -r [reference_file] -o output_prefix
 ```
 
 The input sequence files can be represented using regex. Gzipped files are also accepted.
@@ -59,40 +58,33 @@ For the full set of available options, use the help function,
 ```bash
 skiver sketch -h
 skiver analyze -h
-skiver calibrate -h
 ```
 
 ### Interpreting the results
 
-The output `report.csv` has the following format
+See [this guide](./result_interpretation.md) for a detailed documentation of what each output file contains.
 
-```
-lambda,lambda_5-95th_percentile,beta,beta_5-95th_percentile,key_median_coverage,key_coverage_5-95th_percentile,true_median_coverage,true_coverage_5-95th_percentile,A[C>A]A,A[C>A]C,A[C>A]G...
-0.038009,0.035987~0.040569,0.937677,0.922367~0.951638,30.000000,21.000000~39.000000,58.057400,40.640179~75.474617,102,194,110
-```
+## Example
 
-where `lambda` and `beta` are the estimated parameters for the discrete Weibull distribution. The per-base error rate can be calculated by
-$$\hat{\varepsilon}=1-\exp(-\hat{\lambda}),$$
-and the probability that a $k$-mer in the read is free of sequencing error would be
-$$S(k)=\exp(-\hat{\lambda} k^{\hat{\beta}}).$$
-Fields such as `A[C>A]A` represents the number of times a type of error happening in the read. For example, `A[C>A]A` represents a substitution in 3-mer `ACA` to `AAA`, `C[G>-]A` represents a deletion of `G` between `C` and `A`. These fields are used to infer sequencing error spectra and bias.
-
-## Visualizing the sequencing biases
-
-We provide scripts in `./scripts` for easy visualization of skiver's output. Below is an example using [Zymo mock community reads from Loman Lab](https://lomanlab.github.io/mockcommunity/).
+We provide scripts in `./scripts` for easy visualization of skiver's output. Below is an example of analysis using [*B. Subtilis* isolate reads from Loman Lab](https://lomanlab.github.io/mockcommunity/).
 
 ```bash
-# Download the read data
-wget ftp://ftp.sra.ebi.ac.uk/vol1/fastq/ERR315/006/ERR3152366/ERR3152366.fastq.gz
+# Download the reads with SRA toolkit. If not installed, install with
+# `conda install -c bioconda sra-tools`
+prefetch SRR7498042
+fasterq-dump SRR7498042
+rm -r SRR7498042
 
 # Create the (k,v)-mer sketch of the data
-skiver sketch ./ERR3152366.fastq.gz -o ERR3152366.kvmer
+mkdir -p example
+skiver sketch SRR7498042.fastq -o example/SRR7498042.kvmer
 
 # Run skiver analyze, with all the verbose output
-skiver analyze ERR3152366.kvmer --hazard-rate hazard_rate.csv -o verbose_output.csv > skiver_report.csv
+skiver analyze example/SRR7498042.kvmer -o example/SRR7498042
 
-# Perform Phred score calibration
-skiver calibrate ERR3152366.kvmer > calibration_report.csv
+# visualize the output
+mkdir -p figures
+python scripts/plot_all.py example/SRR7498042 -o figures/SRR7498042
 ```
 
 Here, `hazard_rate.csv` contains the estimated hazard rate over a range of `t`, `verbose_output.csv` contains the key and the consensus values of the sketched (k,v)-mers (mainly for debugging), and `skiver_report.csv` contains the estimated error rates/spectra.

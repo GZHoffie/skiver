@@ -1,0 +1,2 @@
+per_base_error_rate,per_base_error_rate_5-95th_percentile,effective_error_rate,effective_error_rate_5-95th_percentile,lambda,lambda_5-95th_percentile,beta,beta_5-95th_percentile,key_median_coverage,key_coverage_5-95th_percentile,true_median_coverage,true_coverage_5-95th_percentile
+0.107802,0.101965~0.114093,0.110255,0.107827~0.113032,0.114067,0.107546~0.121143,0.967822,0.953870~0.982424,26.000000,12.000000~38.000000,228.139862,105.295326~333.435181
