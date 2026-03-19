@@ -493,7 +493,7 @@ impl ErrorAnalyzer {
      *  1. Estimate lambda and beta from all active keys.
      *  2. For each v and each active key, compute h(t) = 1 - exp(-lambda*(t^beta - (t-1)^beta)).
      *     Treat the count at t as Binomial(n, 1-h(t)) where n is the count at t-1.
-     *     If P(X <= observed) < outlier_threshold (default 0.01), mark the key as an outlier.
+     *     If P(X <= observed) < outlier_threshold (default 1e-9), mark the key as an outlier.
      *  3. Re-estimate lambda and beta from the remaining keys.
      *  4. Repeat until lambda and beta change by less than 1e-4.
      */

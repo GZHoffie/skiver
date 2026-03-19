@@ -5,141 +5,126 @@ import pandas as pd
 import numpy as np
 
 
-def get_kvmer_error_type_spectrum(df):
-    # insertion, deletion, substitution
-    spectrum = {"Insertion": 0, "Deletion": 0, "Substitution": 0}
-    for col in df.columns:
-        if ">-" in col:
-            spectrum["Deletion"] += df[col].item()
-        elif "->" in col:
-            spectrum["Insertion"] += df[col].item()
-        elif ">" in col:
-            spectrum["Substitution"] += df[col].item()
-    
-    return spectrum
+COLS = ["A", "C", "G", "T", "-"]
+BASES = ["A", "C", "G", "T"]
 
 
-def plot_spectrum(skiver_report_file, output_file, normalize=True):
+def _build_spectrum_matrix(df, count_col):
+    """Build a 5×5 (from_base × to_base) spectrum matrix from the long-format df."""
+    matrix = np.zeros((5, 5))
+    for _, row in df.iterrows():
+        op = row["operation"]          # e.g. "A>C", "->A", "A>-"
+        from_base, to_base = op.split(">")
+        fi = COLS.index(from_base) if from_base in COLS else COLS.index("-")
+        ti = COLS.index(to_base)   if to_base   in COLS else COLS.index("-")
+        matrix[fi, ti] += row[count_col]
+    return matrix
+
+
+def _error_type_spectrum(df, count_col):
+    """Sum counts by error type from the long-format df."""
+    spec = {"Insertion": 0.0, "Deletion": 0.0, "Substitution": 0.0}
+    for _, row in df.iterrows():
+        op = row["operation"]
+        count = row[count_col]
+        if op.startswith("->"):
+            spec["Insertion"] += count
+        elif op.endswith(">-"):
+            spec["Deletion"] += count
+        else:
+            spec["Substitution"] += count
+    return spec
+
+
+def _plot_row(axes, df, count_col, row_title_suffix, target_sum, cmap):
+    """Fill one row of the 2×2 figure (heatmap + bar chart).
+
+    target_sum: the value that the spectrum entries should sum to after scaling.
+                1.0 → relative proportions; per_base_error_rate → absolute rates.
+    """
+    ax_heat, ax_bar = axes
+
+    # ── Spectrum matrix ────────────────────────────────────────────────────
+    matrix = _build_spectrum_matrix(df, count_col)
+    total = matrix.sum()
+    if total > 0:
+        matrix = matrix / total * target_sum
+
+    mask = np.eye(5, dtype=bool)
+    sns.heatmap(matrix, annot=True, fmt=".4f",
+                xticklabels=COLS, yticklabels=COLS,
+                cbar=True, mask=mask,
+                linewidths=3, linecolor='white',
+                cmap=cmap, ax=ax_heat)
+
+    ax_heat.set_title(f"Error spectrum — {row_title_suffix}")
+    ax_heat.set_ylabel("Original base")
+    ax_heat.set_xlabel("Observed base")
+
+    # ── Error type bar chart ───────────────────────────────────────────────
+    spec = _error_type_spectrum(df, count_col)
+    values = np.array([spec["Insertion"], spec["Deletion"], spec["Substitution"]], dtype=float)
+    spec_total = values.sum()
+    if spec_total > 0:
+        values = values / spec_total * target_sum
+
+    x = range(3)
+    bars = ax_bar.bar(x, values, color='slategray', width=0.6)
+    ax_bar.bar_label(bars, fmt='%.4f', padding=3)
+    ax_bar.set_xticks(x)
+    ax_bar.set_xticklabels(["Insertion", "Deletion", "Substitution"])
+    ax_bar.spines['top'].set_visible(False)
+    ax_bar.spines['right'].set_visible(False)
+    ax_bar.set_ylim(0, max(values) * 1.15 if values.max() > 0 else 1)
+    ax_bar.set_title(f"Error type distribution — {row_title_suffix}")
+    ax_bar.set_ylabel("Proportion" if target_sum == 1.0 else "Error rate")
+    ax_bar.set_xlabel("Error Type")
+
+
+def plot_spectrum(skiver_spectrum_file, skiver_error_rate_file, output_file, normalize=False):
+    """Plot the error spectrum as a 2×2 figure.
+
+    Top row    – both strands combined (``total`` column).
+    Bottom row – forward strand only   (``forward`` column).
+
+    normalize=False (default): each panel is scaled so entries sum to per_base_error_rate from skiver_error_rate_file.
+    normalize=True:            each panel is scaled so entries sum to 1.
+    """
     color = 'slategray'
-
-    # Range of the heatmap values for consistent coloring across plots
     cmap = sns.light_palette(color, as_cmap=True)
 
-    cols = ["A", "C", "G", "T", "-"]
-    bases = ["A", "C", "G", "T"]
+    df = pd.read_csv(skiver_spectrum_file)
 
-    fig, axes = plt.subplots(1, 2, figsize=(10, 4))
-
-    ## First subplot: spectrum as a matrix
-    spectrum_df = pd.read_csv(skiver_report_file)
-    
-    # Estimate per-base error rate
-    est_lambda = spectrum_df["lambda"].item()
-    est_lambda_range = spectrum_df["lambda_5-95th_percentile"].item().split("~")
-    est_lambda_range = [float(x) for x in est_lambda_range]
-    per_base_error_rate = 1 - np.exp(-est_lambda)
-    per_base_error_rate_range = [1 - np.exp(-est_lambda_range[0]), 1 - np.exp(-est_lambda_range[1])]
-    print(f"Estimated per-base error rate: {per_base_error_rate:.4f} (95% CI: {per_base_error_rate_range[0]:.4f} ~ {per_base_error_rate_range[1]:.4f})")
-
-
-    spectrum_matrix = np.zeros((5, 5))
-    for from_base in cols:
-        for to_base in cols:
-            for prev_base in bases:
-                for next_base in bases:
-                    if from_base == to_base:
-                        continue
-                    key = f"{prev_base}[{from_base}>{to_base}]{next_base}"
-                    spectrum_matrix[cols.index(from_base), cols.index(to_base)] += spectrum_df[key].item()
-        
-    # Normalize
-    if normalize:
-        spectrum_matrix /= spectrum_matrix.sum()
-        print("The spectrum is normalized so that the sum of all entries is 1.")
+    if not normalize:
+        rate_df = pd.read_csv(skiver_error_rate_file)
+        # [FIXME] use effective_error_rate instead? Which one is more appropriate?
+        target_sum = rate_df["per_base_error_rate"].item()
     else:
-        # Calculate the per-base error frequencies
-        spectrum_matrix /= spectrum_matrix.sum()
-        spectrum_matrix *= per_base_error_rate
-    
-    spectrum_matrix *= 100  # Convert to percentage for better readability
+        target_sum = 1.0
 
+    fig, axes = plt.subplots(2, 2, figsize=(14, 10))
 
-    # Plot the headmap
-    ax1 = axes[0]
-    mask_matrix = np.eye(5, dtype=bool)
-    sns.heatmap(spectrum_matrix, annot=True, fmt=".3f", 
-                xticklabels=cols, yticklabels=cols,
-                cbar=True, mask=mask_matrix,
-                linewidths=3, linecolor='white',
-                cmap=cmap, ax=ax1)
-    
-    if normalize:
-        ax1.set_title("Normalized error spectrum (%)")
-    else:
-        ax1.set_title("Error rates (%)")
-    ax1.set_ylabel("Original base")
-    ax1.set_xlabel("Observed base")
-    plt.tight_layout()
+    _plot_row(axes[0], df, "total",   "both strands",  target_sum, cmap)
+    _plot_row(axes[1], df, "forward", "forward strand", target_sum, cmap)
 
-    ## Second subplot: substitution/indel rates
-    ax2 = axes[1]
-    error_rate_df = pd.DataFrame(get_kvmer_error_type_spectrum(spectrum_df), index=[0])
-    #print(error_rate_df)
-
-    total_sum = error_rate_df.sum(axis=1).item()
-    
-    if normalize:
-        error_rate_df /= total_sum
-    else:
-        error_rate_df /= total_sum
-        error_rate_df *= per_base_error_rate
-    
-    error_rate_df *= 100  # Convert to percentage for better readability
-
-    print(error_rate_df)
-
-    #error_rate_df = error_rate_df.melt(var_name="Error Type", value_name="Frequency")
-    #bars = ax.barplot(data=error_rate_df, x="Error Type", y="Frequency", ax=ax)
-    x = range(len(error_rate_df.columns))
-    x_labels = ["Insertion", "Deletion", "Substitution"]
-    error_rates = error_rate_df.iloc[0].values
-    ax2.set_xticks(x)
-    ax2.set_xticklabels(x_labels)
-    bars = ax2.bar(x, error_rates, color=color, width=0.6)
-    ax2.bar_label(bars, fmt='%.3f', padding=3)
-
-    ax2.spines['top'].set_visible(False)
-    ax2.spines['right'].set_visible(False)
-
-    # set y-axis limit to maximum error rate + 10% margin
-    max_error_rate = max(error_rates)
-    ax2.set_ylim(0, max_error_rate * 1.1)
-
-    if normalize:
-        ax2.set_title("Normalized error type distribution (%)")
-    else:
-        ax2.set_title("Error type distribution (%)")
-    ax2.set_ylabel("Frequency (%)")
-    ax2.set_xlabel("Error Type")
-
-    plt.subplots_adjust(wspace=0.2, hspace=0.3)
-    plt.savefig(output_file)
-    #plt.show()
+    plt.subplots_adjust(wspace=0.3, hspace=0.45)
+    plt.savefig(output_file, dpi=150, bbox_inches='tight')
     plt.close()
 
 
 if __name__ == "__main__":
-    #skiver_report_file = "./skiver_report.csv"
-    #output_file = "./output.png"
-    #plot_spectrum(skiver_report_file, output_file, normalize=False)
-
     import argparse
-    parser = argparse.ArgumentParser(description="Plot the error spectrum from Skiver report.")
-    parser.add_argument("skiver_report_file", help="Path to the Skiver report CSV file.")
+    parser = argparse.ArgumentParser(
+        description="Plot the error spectrum from Skiver summary_error_spectrum.csv."
+    )
+    parser.add_argument("skiver_spectrum_file",
+                        help="Path to the summary_error_spectrum CSV file.")
+    parser.add_argument("skiver_error_rate_file",
+                        help="Path to the summary_error_rate CSV file.")
     parser.add_argument("output_file", help="Path to save the output plot image.")
-    parser.add_argument("--normalize", action="store_true", help="Whether to normalize the spectrum (default: False). If not normalized, the spectrum will be scaled to reflect the estimated per-base error rate.")
+    parser.add_argument("--normalize", action="store_true",
+                        help="Scale entries so they sum to 1. If not set, the entries are scaled to sum to the per_base_error_rate from the summary_error_rate file.")
     args = parser.parse_args()
 
-    plot_spectrum(args.skiver_report_file, args.output_file, normalize=args.normalize)
-
-
+    plot_spectrum(args.skiver_spectrum_file, args.skiver_error_rate_file,
+                  args.output_file, normalize=args.normalize)

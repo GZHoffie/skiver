@@ -10,3 +10,4 @@ test.sh
 *.ipynb
 *.fastq.gz
 .vscode
+__pycache__
