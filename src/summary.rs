@@ -92,6 +92,11 @@ impl ErrorSummary {
         let sum_count: u32 = value_map.values().map(|v| v.len() as u32).sum();
         let key_string = Self::to_kmer_string(key, key_size);
         let value_string = Self::to_kmer_string(consensus, value_size);
+        let (second_value_string, second_count) = value_map.iter()
+            .filter(|(v, _)| **v != consensus)
+            .max_by_key(|(_, info_list)| info_list.len())
+            .map(|(v, info_list)| (Self::to_kmer_string(*v, value_size), info_list.len() as u32))
+            .unwrap_or_else(|| (String::new(), 0));
         let homopolymer_length = Self::homopolymer_length(key, key_size, consensus, value_size);
 
         // neighbors filter: skip keys whose consensus is its own neighbor
@@ -158,7 +163,7 @@ impl ErrorSummary {
             None => { all = (0..self.consensus_counts.len()).collect(); &all }
         };
         let mut out = String::new();
-        write!(out, "key,consensus_value,homopolymer_length,consensus_count,neighbor_count,total_count,second_value,second_count").unwrap();
+        write!(out, "key,consensus_value,homopolymer_length,consensus_count,second_value,second_count,neighbor_count,total_count").unwrap();
         for op in ALL_OPERATIONS {
             write!(out, ",{:?}", op).unwrap();
         }
@@ -173,10 +178,10 @@ impl ErrorSummary {
                 self.value_strings[i],
                 self.homopolymer_lengths[i],
                 self.consensus_counts[i],
-                self.neighbor_counts[i],
-                self.total_counts[i],
                 self.second_value_strings[i],
                 self.second_counts[i],
+                self.neighbor_counts[i],
+                self.total_counts[i],
             ).unwrap();
             for op in ALL_OPERATIONS.iter() {
                 let total_count: u32 = self.error_counts_per_key[i].iter()

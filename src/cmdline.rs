@@ -76,7 +76,7 @@ pub struct AnalyzeArgs {
     #[clap(long = "use-all", help_heading = "ALGORITHM", help = "Not excluding the outliers.")]
     pub use_all: bool,
 
-    #[clap(short = 'e', long = "outlier-threshold", default_value_t = 3.0, help_heading = "ALGORITHM", help = "The multiplier to the IQR for defining outliers.")]
+    #[clap(short = 'e', long = "outlier-threshold", default_value_t = 1e-9, help_heading = "ALGORITHM", help = "P-value threshold for the Binomial outlier test: a key is removed if P(X <= observed) < threshold under the fitted Weibull hazard model.")]
     pub outlier_threshold: f32,
 
     #[clap(long = "num-experiments", default_value_t = 100, hidden = true, help_heading = "ALGORITHM", help = "Number of experiments in bootstrapping for estimating the parameters.")]

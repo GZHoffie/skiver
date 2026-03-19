@@ -460,63 +460,99 @@ impl ErrorAnalyzer {
 
     
 
+    /// Approximate erfc(x) using a rational polynomial (Abramowitz & Stegun 7.1.26, max error 1.5e-7).
+    fn erfc_approx(x: f64) -> f64 {
+        if x < 0.0 {
+            return 2.0 - Self::erfc_approx(-x);
+        }
+        let t = 1.0 / (1.0 + 0.3275911 * x);
+        let poly = t * (0.254829592 + t * (-0.284496736 + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429))));
+        poly * (-x * x).exp()
+    }
+
+    fn normal_cdf(z: f64) -> f64 {
+        0.5 * Self::erfc_approx(-z / std::f64::consts::SQRT_2)
+    }
+
+    /// P(X <= k_obs) where X ~ Binomial(n, p), using normal approximation with continuity correction.
+    fn binomial_cdf_lower(n: u32, k_obs: u32, p: f64) -> f64 {
+        if n == 0 { return 1.0; }
+        if p <= 0.0 { return 1.0; }
+        if p >= 1.0 { return if k_obs >= n { 1.0 } else { 0.0 }; }
+        let mean = n as f64 * p;
+        let var = n as f64 * p * (1.0 - p);
+        if var < 1e-10 { return if k_obs as f64 >= mean { 1.0 } else { 0.0 }; }
+        let z = (k_obs as f64 + 0.5 - mean) / var.sqrt();
+        Self::normal_cdf(z)
+    }
+
     /**
-     * Identify outliers based on hazard ratios across different v values,
-     * return the indices of inliers.
+     * Identify outliers iteratively using the Weibull hazard model.
+     *
+     * Algorithm:
+     *  1. Estimate lambda and beta from all active keys.
+     *  2. For each v and each active key, compute h(t) = 1 - exp(-lambda*(t^beta - (t-1)^beta)).
+     *     Treat the count at t as Binomial(n, 1-h(t)) where n is the count at t-1.
+     *     If P(X <= observed) < outlier_threshold (default 1e-9), mark the key as an outlier.
+     *  3. Re-estimate lambda and beta from the remaining keys.
+     *  4. Repeat until lambda and beta change by less than 1e-4.
      */
     pub fn find_hazard_ratio_outliers(&self, stats: &KVmerStats) -> Vec<usize> {
+        let n_keys = stats.error_summary.consensus_counts.len();
+        let mut active = vec![true; n_keys];
 
-        let mut res = vec![true; stats.error_summary.consensus_counts.len()];
+        let max_iter = 10;
+        let convergence_tol = 1e-3_f32;
+        let p_threshold = self.args.outlier_threshold as f64;
 
-        // Compute hazard ratios for each v independently
-        let mut per_v_ratios: Vec<Vec<f32>> = Vec::new();
-        for v in 1..=(stats.v - self.args.ignore_last_hazard_ratios as u8) {
-            let x: &Vec<u32>;
-            let y: &Vec<u32>;
-            if v - 1 == 0 {
-                x = &stats.error_summary.total_counts;
-                y = &stats.error_summary.consensus_up_to_v_counts[0];
-            } else {
-                x = &stats.error_summary.consensus_up_to_v_counts[(v - 1 - 1) as usize];
-                y = &stats.error_summary.consensus_up_to_v_counts[(v - 1) as usize];
+        let mut prev_lambda = f32::INFINITY;
+        let mut prev_beta = f32::INFINITY;
+
+        let v_max = stats.v - self.args.ignore_last_hazard_ratios as u8;
+
+        for iter in 0..max_iter {
+            let indices: Vec<usize> = (0..n_keys).filter(|&i| active[i]).collect();
+            if indices.is_empty() { break; }
+
+            let (lambda, beta, _, _, _) = self.estimate_hazard_ratio(stats, &indices);
+
+            if (lambda - prev_lambda).abs() < convergence_tol && (beta - prev_beta).abs() < convergence_tol {
+                info!("Iterative outlier removal converged after {} iteration(s).", iter);
+                break;
             }
-            let ratio = x.iter().zip(y.iter())
-                .map(|(&xi, &yi)| if xi != 0 { yi as f32 / xi as f32 } else { 1. })
-                .collect::<Vec<f32>>();
-            per_v_ratios.push(ratio);
-        }
+            prev_lambda = lambda;
+            prev_beta = beta;
 
-        // Join together hazard rates for all v to compute a single IQR threshold
-        let mut all_ratios: Vec<f32> = per_v_ratios.iter()
-            .flat_map(|r| r.iter().copied())
-            .filter(|&r| r < 1.)
-            .collect();
-        all_ratios.sort_by(f32::total_cmp);
+            for v in 1..=v_max {
+                // t is the time coordinate used when fitting: t = (v-1) + k
+                let t = (v - 1) as f64 + self.args.k as f64;
+                let t_beta = t.powf(beta as f64);
+                let t1_beta = if t > 1.0 { (t - 1.0).powf(beta as f64) } else { 0.0 };
+                let h_t = 1.0 - (-(lambda as f64) * (t_beta - t1_beta)).exp();
+                let p_survival = (1.0 - h_t).clamp(0.0, 1.0);
 
-        let n = all_ratios.len();
-        if n > 0 {
-            let q1 = all_ratios[n / 4];
-            let q3 = all_ratios[(3 * n) / 4];
-            let iqr = q3 - q1;
-            let lower_bound = q1 - self.args.outlier_threshold * iqr;
+                for i in 0..n_keys {
+                    if !active[i] { continue; }
 
-            // Exclude outliers: a data point is excluded if it falls below the
-            // combined lower bound in any v
-            for ratios in &per_v_ratios {
-                for (i, &r) in ratios.iter().enumerate() {
-                    if r < lower_bound {
-                        res[i] = false;
+                    let n = if v == 1 {
+                        stats.error_summary.total_counts[i]
+                    } else {
+                        stats.error_summary.consensus_up_to_v_counts[(v - 2) as usize][i]
+                    };
+                    let k_obs = stats.error_summary.consensus_up_to_v_counts[(v - 1) as usize][i];
+
+                    if n == 0 { continue; }
+
+                    if Self::binomial_cdf_lower(n, k_obs, p_survival) < p_threshold {
+                        active[i] = false;
                     }
                 }
             }
         }
 
-        let indices: Vec<usize> = res.iter().enumerate()
-                                .filter_map(|(i, &is_inlier)| if is_inlier { Some(i) } else { None })
-                                .collect();
-
-        info!("Identified {} inliers out of {} data points based on hazard ratios ({}%).", indices.len(), res.len(), (indices.len() as f32 / res.len() as f32) * 100.0);
-
+        let indices: Vec<usize> = (0..n_keys).filter(|&i| active[i]).collect();
+        info!("Identified {} inliers out of {} data points based on iterative Binomial outlier removal ({}%).",
+            indices.len(), n_keys, (indices.len() as f32 / n_keys as f32) * 100.0);
         indices
     }
 
