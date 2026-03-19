@@ -87,7 +87,7 @@ mkdir -p figures
 python scripts/plot_all.py example/SRR7498042 -o figures/SRR7498042
 ```
 
-Here, `hazard_rate.csv` contains the estimated hazard rate over a range of `t`, `verbose_output.csv` contains the key and the consensus values of the sketched (k,v)-mers (mainly for debugging), and `skiver_report.csv` contains the estimated error rates/spectra.
+This creates the verbose output in [`example/SRR7498042.*.csv`](example/), and visualize the output in [`figures/SRR7498042_*.png`](figures/).
 
 - **Visualizing hazard rate and survival rate estimates**
 

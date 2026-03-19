@@ -11,3 +11,4 @@ test.sh
 *.fastq
 .vscode
 __pycache__
+test
