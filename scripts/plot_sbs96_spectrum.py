@@ -73,7 +73,7 @@ def plot_sbs96_spectrum(data_file, output_file):
 
         ax_top.spines['top'].set_visible(False)
         ax_top.spines['right'].set_visible(False)
-        ax_bot.spines['bottom'].set_visible(False)
+        ax_bot.spines['top'].set_visible(False)
         ax_bot.spines['right'].set_visible(False)
 
         for i, mut in enumerate(top_muts):
@@ -114,9 +114,8 @@ def plot_sbs96_spectrum(data_file, output_file):
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Plot the SBS spectrum from Skiver summary_error_spectrum.csv.")
-    parser.add_argument("skiver_spectrum_file",
-                        help="Path to the summary_error_spectrum CSV file.")
+    parser.add_argument("summary_error_spectrum_csv", help="Path to the summary_error_spectrum CSV file.")
     parser.add_argument("output_file", help="Path to save the output plot image.")
 
     args = parser.parse_args()
-    plot_sbs96_spectrum(args.skiver_spectrum_file, args.output_file)
+    plot_sbs96_spectrum(args.summary_error_spectrum_csv, args.output_file)

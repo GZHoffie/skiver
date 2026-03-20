@@ -61,15 +61,10 @@ def plot_coverage_histogram(verbose_output_file, skiver_report_file, output_file
     #plt.show()
 
 if __name__ == "__main__":
-    #verbose_output_file = "./verbose_output.csv"
-    #skiver_report_file = "./skiver_report.csv"
-    #output_file = "./coverage_histogram.png"
-    #plot_coverage_histogram(verbose_output_file, skiver_report_file, output_file)
-
     import argparse
     parser = argparse.ArgumentParser(description="Estimate the true coverage histogram from Skiver report.")
-    parser.add_argument("verbose_output_file", help="Path to the verbose output CSV file from Skiver.")
-    parser.add_argument("skiver_report_file", help="Path to the Skiver report CSV file.")
+    parser.add_argument("kvmer_csv", help="Path to the verbose kvmer summary CSV file from Skiver.")
+    parser.add_argument("summary_error_rate_csv", help="Path to the Skiver error rate report CSV file.")
     parser.add_argument("output_file", help="Path to save the output plot image.")
     args = parser.parse_args()
-    plot_coverage_histogram(args.verbose_output_file, args.skiver_report_file, args.output_file)
+    plot_coverage_histogram(args.kvmer_csv, args.summary_error_rate_csv, args.output_file)

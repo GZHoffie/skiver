@@ -36,7 +36,7 @@ def _error_type_spectrum(df, count_col):
     return spec
 
 
-def _plot_row(axes, df, count_col, row_title_suffix, target_sum, cmap):
+def _plot_row(axes, df, count_col, row_title_suffix, target_sum, cmap, normalize=False):
     """Fill one row of the 2×2 figure (heatmap + bar chart).
 
     target_sum: the value that the spectrum entries should sum to after scaling.
@@ -48,16 +48,17 @@ def _plot_row(axes, df, count_col, row_title_suffix, target_sum, cmap):
     matrix = _build_spectrum_matrix(df, count_col)
     total = matrix.sum()
     if total > 0:
-        matrix = matrix / total * target_sum
+        matrix = matrix / total * target_sum * 100
 
     mask = np.eye(5, dtype=bool)
-    sns.heatmap(matrix, annot=True, fmt=".4f",
+    sns.heatmap(matrix, annot=True, fmt=".3f",
                 xticklabels=COLS, yticklabels=COLS,
                 cbar=True, mask=mask,
                 linewidths=3, linecolor='white',
                 cmap=cmap, ax=ax_heat)
 
-    ax_heat.set_title(f"Error spectrum — {row_title_suffix}")
+    normalized_suffix = " (normalized)" if normalize else ""
+    ax_heat.set_title(f"Error spectrum{normalized_suffix} — {row_title_suffix}")
     ax_heat.set_ylabel("Original base")
     ax_heat.set_xlabel("Observed base")
 
@@ -66,18 +67,18 @@ def _plot_row(axes, df, count_col, row_title_suffix, target_sum, cmap):
     values = np.array([spec["Insertion"], spec["Deletion"], spec["Substitution"]], dtype=float)
     spec_total = values.sum()
     if spec_total > 0:
-        values = values / spec_total * target_sum
+        values = values / spec_total * target_sum * 100
 
     x = range(3)
     bars = ax_bar.bar(x, values, color='slategray', width=0.6)
-    ax_bar.bar_label(bars, fmt='%.4f', padding=3)
+    ax_bar.bar_label(bars, fmt='%.3f', padding=3)
     ax_bar.set_xticks(x)
     ax_bar.set_xticklabels(["Insertion", "Deletion", "Substitution"])
     ax_bar.spines['top'].set_visible(False)
     ax_bar.spines['right'].set_visible(False)
     ax_bar.set_ylim(0, max(values) * 1.15 if values.max() > 0 else 1)
-    ax_bar.set_title(f"Error type distribution — {row_title_suffix}")
-    ax_bar.set_ylabel("Proportion" if target_sum == 1.0 else "Error rate")
+    ax_bar.set_title(f"Error type distribution{normalized_suffix} — {row_title_suffix}")
+    ax_bar.set_ylabel("Proportion (%)" if normalize else "Error rate (%)")
     ax_bar.set_xlabel("Error Type")
 
 
@@ -104,8 +105,8 @@ def plot_spectrum(skiver_spectrum_file, skiver_error_rate_file, output_file, nor
 
     fig, axes = plt.subplots(2, 2, figsize=(14, 10))
 
-    _plot_row(axes[0], df, "total",   "both strands",  target_sum, cmap)
-    _plot_row(axes[1], df, "forward", "forward strand", target_sum, cmap)
+    _plot_row(axes[0], df, "total",   "both strands",  target_sum, cmap, normalize)
+    _plot_row(axes[1], df, "forward", "forward strand", target_sum, cmap, normalize)
 
     plt.subplots_adjust(wspace=0.3, hspace=0.45)
     plt.savefig(output_file, dpi=150, bbox_inches='tight')
@@ -117,14 +118,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Plot the error spectrum from Skiver summary_error_spectrum.csv."
     )
-    parser.add_argument("skiver_spectrum_file",
+    parser.add_argument("summary_error_spectrum_csv",
                         help="Path to the summary_error_spectrum CSV file.")
-    parser.add_argument("skiver_error_rate_file",
+    parser.add_argument("summary_error_rate_csv",
                         help="Path to the summary_error_rate CSV file.")
     parser.add_argument("output_file", help="Path to save the output plot image.")
     parser.add_argument("--normalize", action="store_true",
                         help="Scale entries so they sum to 1. If not set, the entries are scaled to sum to the per_base_error_rate from the summary_error_rate file.")
     args = parser.parse_args()
 
-    plot_spectrum(args.skiver_spectrum_file, args.skiver_error_rate_file,
+    plot_spectrum(args.summary_error_spectrum_csv, args.summary_error_rate_csv,
                   args.output_file, normalize=args.normalize)

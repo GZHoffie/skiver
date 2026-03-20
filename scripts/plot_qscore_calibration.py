@@ -78,10 +78,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Plot empirical vs. theoretical error rate by Phred quality score."
     )
-    parser.add_argument("calibration_file",
-                        help="CSV produced by `skiver calibrate` "
-                             "(columns: qscore, empirical_qscore, num_correct, num_error, "
-                             "error_rate).")
+    parser.add_argument("summary_phred_csv",
+                        help="Path to the summary Phred CSV file.")
     parser.add_argument("output_file", help="Path to save the output plot image.")
     parser.add_argument("--log", action="store_true",
                         help="Use logarithmic scale for the y-axis (default: False).")
@@ -89,5 +87,5 @@ if __name__ == "__main__":
                         help="Minimum coverage for plotting data points (default: 100).")
     args = parser.parse_args()
 
-    plot_qscore_calibration(args.calibration_file, args.output_file,
+    plot_qscore_calibration(args.summary_phred_csv, args.output_file,
                             log_scale=args.log, min_coverage=args.min_coverage)

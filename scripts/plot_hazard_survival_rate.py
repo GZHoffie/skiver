@@ -67,18 +67,13 @@ def plot_hazard_survival_rate(hazard_rate_file, skiver_report_file, output_file,
     #plt.show()
 
 if __name__ == "__main__":
-    #hazard_rate_file = "./hazard_rate.csv"
-    #skiver_report_file = "./skiver_report.csv"
-    #output_file = "./coverage_histogram.png"
-    #plot_hazard_survival_rate(hazard_rate_file, skiver_report_file, output_file)
-
     import argparse
     parser = argparse.ArgumentParser(description="Estimate the true coverage histogram from Skiver report.")
-    parser.add_argument("hazard_rate_file", help="Path to the hazard rate CSV file.")
-    parser.add_argument("skiver_report_file", help="Path to the Skiver report CSV file.")
+    parser.add_argument("hazard_rate_csv", help="Path to the hazard rate CSV file.")
+    parser.add_argument("summary_error_rate_csv", help="Path to the Skiver error rate report CSV file.")
     parser.add_argument("output_file", help="Path to save the output plot image.")
     parser.add_argument("--log_scale", action="store_true", help="Use logarithmic scale for y-axis.")
     parser.add_argument("-t", type=int, default=1, help="Minimum t value for survival rate curve (default: 1).")
     parser.add_argument("-T", type=int, default=100, help="Maximum t value for survival rate curve (default: 100).")
     args = parser.parse_args()
-    plot_hazard_survival_rate(args.hazard_rate_file, args.skiver_report_file, args.output_file, t_min=args.t, t_max=args.T, log_scale=args.log_scale)
+    plot_hazard_survival_rate(args.hazard_rate_csv, args.summary_error_rate_csv, args.output_file, t_min=args.t, t_max=args.T, log_scale=args.log_scale)

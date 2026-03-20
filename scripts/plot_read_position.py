@@ -66,12 +66,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Plot error rate by read position from summary_read_position.csv."
     )
-    parser.add_argument("read_position_file",
+    parser.add_argument("summary_read_position_csv",
                         help="Path to the summary_read_position CSV file.")
     parser.add_argument("output_file", help="Path to save the output plot image.")
     parser.add_argument("--num-bases", type=int, default=100,
                         help="Number of bases from each end to plot (default: 100).")
     args = parser.parse_args()
 
-    plot_read_position(args.read_position_file, args.output_file,
+    plot_read_position(args.summary_read_position_csv, args.output_file,
                        num_bases=args.num_bases)

@@ -97,10 +97,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Plot error spectrum dependence on value position."
     )
-    parser.add_argument("csv_file",
+    parser.add_argument("summary_error_rate_dependence_csv",
                         help="Path to summary_error_spectrum_dependence_on_v.csv")
     parser.add_argument("output_file", help="Path to save the output plot image.")
     parser.add_argument("-k", default=21, type=int, help="Length of the key (default: 21).")
     args = parser.parse_args()
 
-    plot_error_spectrum_dependence_on_v(args.csv_file, args.output_file, k=args.k)
+    plot_error_spectrum_dependence_on_v(args.summary_error_rate_dependence_csv, args.output_file, k=args.k)
