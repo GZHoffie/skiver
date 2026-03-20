@@ -502,7 +502,7 @@ impl ErrorAnalyzer {
         let mut active = vec![true; n_keys];
 
         let max_iter = 10;
-        let convergence_tol = 1e-3_f32;
+        let convergence_tol = 1e-5_f32;
         let p_threshold = self.args.outlier_threshold as f64;
 
         let mut prev_lambda = f32::INFINITY;
