@@ -10,7 +10,7 @@ naming convention:
     <prefix>.kvmer.csv
     <prefix>.hazard_rate.csv
     <prefix>.summary_error_spectrum.csv
-    <prefix>.summary_error_spectrum_dependence_on_v.csv
+    <prefix>.summary_error_spectrum_dependence_on_t.csv
     <prefix>.summary_phred.csv
     <prefix>.summary_read_position.csv
 
@@ -42,7 +42,7 @@ from plot_hazard_survival_rate import plot_hazard_survival_rate
 from plot_qscore_calibration import plot_qscore_calibration
 from plot_read_position import plot_read_position
 from plot_sbs96_spectrum import plot_sbs96_spectrum
-from plot_error_spectrum_dependence_on_v import plot_error_spectrum_dependence_on_v
+from plot_error_spectrum_dependence_on_t import plot_error_spectrum_dependence_on_t
 
 
 # ---------------------------------------------------------------------------
@@ -59,14 +59,14 @@ def _exists(path):
 def generate_plots(input_prefix, output_prefix,
                    normalize=False, log_scale=False,
                    t_min=1, t_max=100,
-                   num_bases=100, min_coverage=100, k=21):
+                   num_bases=100, min_coverage=100):
     """Generate all available plots for a single *input_prefix*."""
 
     report   = f"{input_prefix}.summary_error_rate.csv"
     kvmer    = f"{input_prefix}.kvmer.csv"
     hazard   = f"{input_prefix}.hazard_rate.csv"
     spectrum = f"{input_prefix}.summary_error_spectrum.csv"
-    dep_v    = f"{input_prefix}.summary_error_spectrum_dependence_on_v.csv"
+    dep_t    = f"{input_prefix}.summary_error_spectrum_dependence_on_t.csv"
     phred    = f"{input_prefix}.summary_phred.csv"
     readpos  = f"{input_prefix}.summary_read_position.csv"
 
@@ -100,11 +100,10 @@ def generate_plots(input_prefix, output_prefix,
                                         f"{output_prefix}_sbs96_spectrum.png"),
         ),
         (
-            "error spectrum dependence on v",
-            [dep_v],
-            lambda: plot_error_spectrum_dependence_on_v(dep_v,
-                                                        f"{output_prefix}_error_spectrum_dep_v.png",
-                                                        k=k),
+            "error spectrum dependence on t",
+            [dep_t],
+            lambda: plot_error_spectrum_dependence_on_t(dep_t,
+                                                        f"{output_prefix}_error_spectrum_dep_t.png"),
         ),
         (
             "quality-score calibration",
@@ -167,8 +166,6 @@ def main():
                         help="Number of bases from each end to plot for read position (default: 100).")
     parser.add_argument("--min-coverage", type=int, default=100,
                         help="Minimum coverage for qscore calibration plot (default: 100).")
-    parser.add_argument("-k", type=int, default=21,
-                        help="k-mer length (default: 21).")
 
     args = parser.parse_args()
 
@@ -190,8 +187,7 @@ def main():
             t_min=args.t,
             t_max=args.T,
             num_bases=args.num_bases,
-            min_coverage=args.min_coverage,
-            k=args.k,
+            min_coverage=args.min_coverage
         )
 
     print("Done.")

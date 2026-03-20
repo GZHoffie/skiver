@@ -73,7 +73,8 @@ def plot_sbs96_spectrum(data_file, output_file):
 
         ax_top.spines['top'].set_visible(False)
         ax_top.spines['right'].set_visible(False)
-        ax_bot.spines['top'].set_visible(False)
+        ax_bot.spines['top'].set_visible(True)
+        ax_bot.spines['bottom'].set_visible(False)
         ax_bot.spines['right'].set_visible(False)
 
         for i, mut in enumerate(top_muts):

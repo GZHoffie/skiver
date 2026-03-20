@@ -3,7 +3,7 @@
   <img src="./logo.png" alt="Logo" width="300"/>
 </p>
 
-# Skiver: Rapid quality control of genome sequencing datasets using $(k,v)$-mer sketches
+# Skiver: Rapid quality control of genome sequencing datasets using (*k*, *v*)-mer sketches
 
 > [!WARNING]  
 > This tool is under development and testing, not production-ready yet.
@@ -73,7 +73,7 @@ We provide scripts in `./scripts` for easy visualization of skiver's output. Bel
 # `conda install -c bioconda sra-tools`
 # This read set takes ~3GB space, ~10 min to download
 prefetch SRR7498042
-fasterq-dump SRR7498042 # In some versions, need to run fastq-dump SRR7498042
+fasterq-dump SRR7498042 # In some versions, need to run `fastq-dump SRR7498042` instead
 #rm -r SRR7498042
 
 # Create the (k,v)-mer sketch of the data in the example/ folder
@@ -134,13 +134,13 @@ Apart from `plot_all.py`, you can also use the individual scripts and adjust the
 - **Visualizing single base substitution (SBS) spectrum**
 
   ```bash
-  python scripts/plot_error_spectrum_dependence_on_v.py example/SRR7498042.summary_error_spectrum_dependence_on_v.csv figures/SRR7498042_error_spectrum_dep_v.png
+  python scripts/plot_error_spectrum_dependence_on_t.py example/SRR7498042.summary_error_spectrum_dependence_on_v.csv figures/SRR7498042_error_spectrum_dep_t.png
   ```
 
-  will plot how the composition of error rate change with $t$. If our assumption is valid, the composition should not vary too much across $t$.
+  will plot how the composition of error rate change with *t*. If our assumption is valid, the composition should not vary too much across *t*.
 
   <p align="center">
-    <img src="./figures/SRR7498042_error_spectrum_dep_v.png"/>
+    <img src="./figures/SRR7498042_error_spectrum_dep_t.png"/>
   </p>
 
 - **Visualizing coverage** (beta)
@@ -176,4 +176,4 @@ This is my first project in rust and this project is in early stages of developm
 
 ## Citation
 
-Gu, Z., Sharma, P., Wong, L., & Nagarajan, N. (2026). [Skiver: Alignment-free Estimation of Sequencing Error Rates and Spectra using (k, v)-mer Sketches](https://www.biorxiv.org/content/10.64898/2026.02.12.705514v1). *bioRxiv*, 2026-02.
+Gu, Z., Sharma, P., Wong, L., & Nagarajan, N. (2026). [Skiver: Alignment-free Estimation of Sequencing Error Rates and Spectra using (*k*, *v*)-mer Sketches](https://www.biorxiv.org/content/10.64898/2026.02.12.705514v1). *bioRxiv*, 2026-02.

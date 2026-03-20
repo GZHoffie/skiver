@@ -14,11 +14,11 @@ def classify_op(op):
     return "Other"
 
 
-def plot_error_spectrum_dependence_on_v(csv_file, output_file, k=21):
+def plot_error_spectrum_dependence_on_t(csv_file, output_file):
     df = pd.read_csv(csv_file)
 
-    pos_cols = [c for c in df.columns if c.startswith("pos_")]
-    positions = [int(c.split("_")[1]) for c in pos_cols]
+    pos_cols = [c for c in df.columns if c.startswith("freq_at_t")]
+    positions = [int(c.split("t")[-1]) for c in pos_cols]
 
     df["type"] = df["operation"].apply(classify_op)
 
@@ -29,7 +29,7 @@ def plot_error_spectrum_dependence_on_v(csv_file, output_file, k=21):
     valid_mask = col_totals > 0
     valid_pos_cols = [c for c, v in zip(pos_cols, valid_mask) if v]
     valid_positions = [p for p, v in zip(positions, valid_mask) if v]
-    valid_t = [p + k for p in valid_positions]
+    valid_t = [p for p in valid_positions]
     valid_totals = col_totals[valid_pos_cols]
 
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
@@ -98,9 +98,8 @@ if __name__ == "__main__":
         description="Plot error spectrum dependence on value position."
     )
     parser.add_argument("summary_error_rate_dependence_csv",
-                        help="Path to summary_error_spectrum_dependence_on_v.csv")
+                        help="Path to summary_error_spectrum_dependence_on_t.csv")
     parser.add_argument("output_file", help="Path to save the output plot image.")
-    parser.add_argument("-k", default=21, type=int, help="Length of the key (default: 21).")
     args = parser.parse_args()
 
-    plot_error_spectrum_dependence_on_v(args.summary_error_rate_dependence_csv, args.output_file, k=args.k)
+    plot_error_spectrum_dependence_on_t(args.summary_error_rate_dependence_csv, args.output_file)

@@ -97,7 +97,7 @@ pub struct AnalyzeArgs {
     //#[clap(short = 't', long = "threads", default_value_t = 4, help_heading = "ALGORITHM", help = "Number of threads.")]
     //pub threads: usize,
 
-    #[clap(short = 'o', long = "output-prefix", help_heading = "OUTPUT", help = "Output prefix. When set, writes <prefix>.csv (analysis), <prefix>.summary_error.csv, <prefix>.summary_error_spectrum.csv, <prefix>.summary_error_spectrum_dependence_on_v.csv, <prefix>.summary_phred.csv, and <prefix>.summary_read_position.csv.")]
+    #[clap(short = 'o', long = "output-prefix", help_heading = "OUTPUT", help = "Output prefix. When set, writes the report to <prefix>.*.csv.")]
     pub output_prefix: Option<String>,
 
     #[clap(long, default_value_t = String::from("sum_ratio"), hidden = true, help = "One of 'slope', 'linear_fit', 'ratio_mean', 'sum_ratio'.")]

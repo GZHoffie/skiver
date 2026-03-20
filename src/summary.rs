@@ -220,7 +220,7 @@ impl ErrorSpectrumSummary {
 }
 
 impl ErrorSpectrumSummary {
-    pub fn to_dependence_on_v_csv(&self, indices: Option<&[usize]>) -> String {
+    pub fn to_dependence_on_t_csv(&self, indices: Option<&[usize]>, k: usize, ignore_last: usize) -> String {
         use std::fmt::Write;
         let all: Vec<usize>;
         let indices = match indices {
@@ -235,17 +235,18 @@ impl ErrorSpectrumSummary {
             }
         }
 
+        let v_out = self.v.saturating_sub(ignore_last);
         let mut out = String::new();
         write!(out, "operation,prev_base,next_base,total").unwrap();
-        for pos in 1..=self.v {
-            write!(out, ",pos_{}", pos).unwrap();
+        for pos in 1..=v_out {
+            write!(out, ",freq_at_t{}", k + pos).unwrap();
         }
         writeln!(out).unwrap();
 
         for &op in ALL_OPERATIONS.iter() {
             for prev_base in 0u8..4 {
                 for next_base in 0u8..4 {
-                    let counts: Vec<u64> = (1..=self.v as u8)
+                    let counts: Vec<u64> = (1..=v_out as u8)
                         .map(|pos| totals.get(&(op, prev_base, next_base, pos)).copied().unwrap_or(0))
                         .collect();
                     let total: u64 = counts.iter().sum();
