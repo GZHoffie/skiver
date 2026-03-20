@@ -74,7 +74,6 @@ We provide scripts in `./scripts` for easy visualization of skiver's output. Bel
 # This read set takes ~3GB space, ~10 min to download
 prefetch SRR7498042
 fasterq-dump SRR7498042 # In some versions, need to run `fastq-dump SRR7498042` instead
-#rm -r SRR7498042
 
 # Create the (k,v)-mer sketch of the data in the example/ folder
 mkdir -p example
