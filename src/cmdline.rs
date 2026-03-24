@@ -91,8 +91,11 @@ pub struct AnalyzeArgs {
     #[clap(short = 'b', long = "trim-back", hidden = true, default_value_t = 0, help_heading = "INPUT", help = "Number of bases to trim from the end of each read.")]
     pub trim_back: usize,
 
-    #[clap(long, default_value_t = 2, hidden = true, help_heading = "ALGORITHM", help = "Number of estimated hazard ratios to ignore from the largest v.")]
-    pub ignore_last_hazard_ratios: usize,
+    #[clap(long, default_value_t = 2, help_heading = "ALGORITHM", help = "The number of largest t values to ignore. This is due to the empirical observation that the error spectrum estimation can be inaccurate for large t values.")]
+    pub ignore_largest_t: usize,
+
+    #[clap(long, default_value_t = 2, help_heading = "ALGORITHM", help = "The number of smallest t values to ignore. This is due to the empirical observation that the error spectrum estimation can be inaccurate for small t values.")]
+    pub ignore_smallest_t: usize,
 
     //#[clap(short = 't', long = "threads", default_value_t = 4, help_heading = "ALGORITHM", help = "Number of threads.")]
     //pub threads: usize,
@@ -103,10 +106,10 @@ pub struct AnalyzeArgs {
     #[clap(long, default_value_t = String::from("sum_ratio"), hidden = true, help = "One of 'slope', 'linear_fit', 'ratio_mean', 'sum_ratio'.")]
     pub estimation_method: String,
 
-    #[clap(long, default_value_t = String::from("weibull"), help = "Model used to fit the hazard rates vs. t. Should be one of 'constant' (assuming that the hazard rate is constant over t), 'weibull' (assuming T follows a discrete Weibull distribution).")]
+    #[clap(long, default_value_t = String::from("weibull"), help_heading = "ALGORITHM", help = "Model used to fit the hazard rates vs. t. Should be one of 'constant' (assuming that the hazard rate is constant over t), 'weibull' (assuming T follows a discrete Weibull distribution).")]
     pub hazard_model: String,
 
-    #[clap(long = "first-base-only", hidden = true, help = "In ReadPositionSummary and PhredScoreSummary, consider only the first base of each value instead of all bases up to an error.")]
+    #[clap(long = "first-base-only", hidden = true, help_heading = "ALGORITHM", help = "[FOR TESTING] In ReadPositionSummary and PhredScoreSummary, consider only the first base of each value instead of all bases up to an error.")]
     pub first_base_only: bool,
 }
 

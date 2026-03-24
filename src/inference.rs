@@ -508,12 +508,14 @@ impl ErrorAnalyzer {
         let mut prev_lambda = f32::INFINITY;
         let mut prev_beta = f32::INFINITY;
 
-        let v_max = stats.v - self.args.ignore_last_hazard_ratios as u8;
+        let v_min = 1 + self.args.ignore_smallest_t as u8;
+        let v_max = stats.v - self.args.ignore_largest_t as u8;
 
         for iter in 0..max_iter {
             let indices: Vec<usize> = (0..n_keys).filter(|&i| active[i]).collect();
             if indices.is_empty() { break; }
 
+            // the hazard rates are estimated using v=v_min,...,v_max
             let (lambda, beta, _, _, _) = self.estimate_hazard_ratio(stats, &indices);
 
             if (lambda - prev_lambda).abs() < convergence_tol && (beta - prev_beta).abs() < convergence_tol {
@@ -523,7 +525,8 @@ impl ErrorAnalyzer {
             prev_lambda = lambda;
             prev_beta = beta;
 
-            for v in 1..=v_max {
+            // exclude outliers for all 1<= v <= stats.v
+            for v in 1..=stats.v {
                 // t is the time coordinate used when fitting: t = (v-1) + k
                 let t = (v - 1) as f64 + self.args.k as f64;
                 let t_beta = t.powf(beta as f64);
@@ -640,7 +643,10 @@ impl ErrorAnalyzer {
 
         // record hazard ratios for each v
         let mut hazard_ratio_list: Vec<Vec<f32>> = Vec::new();
-        for _v in 1..=(stats.v - self.args.ignore_last_hazard_ratios as u8) {
+
+        let v_min = 1 + self.args.ignore_smallest_t as u8;
+        let v_max = stats.v - self.args.ignore_largest_t as u8;
+        for _v in v_min..=v_max {
             hazard_ratio_list.push(Vec::new());
         }
 
@@ -649,7 +655,7 @@ impl ErrorAnalyzer {
 
             let mut hazard_ratios: Vec<f32> = Vec::new();
 
-            for v in 1..=(stats.v - self.args.ignore_last_hazard_ratios as u8) {
+            for v in v_min..=v_max {
                 if v - 1 == 0 {
                     x = &stats.error_summary.total_counts;
                     y = &stats.error_summary.consensus_up_to_v_counts[0];
@@ -660,7 +666,7 @@ impl ErrorAnalyzer {
 
                 let h = self.calculate_ratio(x, y, &indices_sample);
                 hazard_ratios.push(1. - h);
-                hazard_ratio_list[(v - 1) as usize].push(1. - h);
+                hazard_ratio_list[(v - v_min) as usize].push(1. - h);
             }
             // estimate the parameters of the beta distribution
             //let (alpha, beta) = self.fit_hazard_ratio_beta_distribution(&hazard_ratios, (indices.len() as f32 * self.bootstrap_sample_rate) as usize);
@@ -703,7 +709,9 @@ impl ErrorAnalyzer {
         let mut x_sum: Vec<u32> = Vec::new();
         let mut y_sum: Vec<u32> = Vec::new();
 
-        for v in 1..=(stats.v - self.args.ignore_last_hazard_ratios as u8) {
+        let v_min = 1 + self.args.ignore_smallest_t as u8;
+        let v_max = stats.v - self.args.ignore_largest_t as u8;
+        for v in v_min..=v_max {
             if v - 1 == 0 {
                 x = &stats.error_summary.total_counts;
                 y = &stats.error_summary.consensus_up_to_v_counts[0];
@@ -936,7 +944,7 @@ impl ErrorAnalyzer {
 
             fs::write(format!("{}.kvmer.csv", prefix), stats.error_summary.to_csv(Some(&indices))).unwrap();
             fs::write(format!("{}.summary_error_spectrum.csv", prefix), stats.error_spectrum.to_csv(Some(&indices))).unwrap();
-            fs::write(format!("{}.summary_error_spectrum_dependence_on_t.csv", prefix), stats.error_spectrum.to_dependence_on_t_csv(Some(&indices), self.args.k as usize, self.args.ignore_last_hazard_ratios)).unwrap();
+            fs::write(format!("{}.summary_error_spectrum_dependence_on_t.csv", prefix), stats.error_spectrum.to_dependence_on_t_csv(Some(&indices), self.args.k as usize, self.args.ignore_smallest_t, self.args.ignore_largest_t)).unwrap();
             fs::write(format!("{}.summary_phred.csv", prefix), stats.phred_summary.to_csv(Some(&indices))).unwrap();
             fs::write(format!("{}.summary_read_position.csv", prefix), stats.read_position_summary.to_csv(Some(&indices))).unwrap();
         }
