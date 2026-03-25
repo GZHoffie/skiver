@@ -60,16 +60,6 @@ jobs:
             libssl-dev \
             libgtk-3-dev
 
-      - name: Setup OpenSSL (Windows)
-        if: matrix.platform == 'windows-latest'
-        shell: pwsh
-        run: |
-          $opensslDir = "C:\Program Files\OpenSSL-Win64"
-          if (-not (Test-Path $opensslDir)) {
-            choco install openssl -y --no-progress
-          }
-          Add-Content $env:GITHUB_ENV "OPENSSL_DIR=$opensslDir"
-
       - name: Install frontend dependencies
         working-directory: ui
         run: npm ci
