@@ -39,7 +39,8 @@ export function HazardSurvivalPlot({ hazardPath, errorRatePath }: Props) {
   const tSurv = Array.from({ length: 100 }, (_, i) => i + 1);
   const survival = tSurv.map((ti) => Math.exp(-lambda * Math.pow(ti, beta)));
 
-  const hazardTraces: Plotly.Data[] = [
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const hazardTraces: any[] = [
     {
       type: "scatter", x: t, y: lo, mode: "lines",
       line: { color: "transparent" }, showlegend: false,
@@ -63,7 +64,8 @@ export function HazardSurvivalPlot({ hazardPath, errorRatePath }: Props) {
     },
   ];
 
-  const survivalTraces: Plotly.Data[] = [
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const survivalTraces: any[] = [
     {
       type: "scatter", x: tSurv, y: survival, mode: "lines",
       line: { color: "steelblue", width: 4, dash: "dash" }, name: "Fitted survival rate",

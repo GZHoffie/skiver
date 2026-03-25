@@ -36,7 +36,7 @@ function buildMatrix(
   }
 
   // normalize matrix so that they sum to 100.
-  const total = matrix.reduce((sum, row) => (sum ?? 0) + row.reduce((rSum, v) => (rSum ?? 0) + (v ?? 0), 0), 0);
+  const total = matrix.reduce((sum: number, row) => sum + row.reduce((rSum: number, v) => rSum + (v ?? 0), 0), 0);
   if (total > 0) {
     for (let i = 0; i < matrix.length; i++) {
       for (let j = 0; j < matrix[i].length; j++) {

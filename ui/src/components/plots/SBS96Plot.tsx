@@ -15,12 +15,12 @@ interface Props {
 const DNA = ["A", "C", "G", "T"];
 const CANONICAL_MUTS = ["C>A", "C>G", "C>T", "T>A", "T>C", "T>G"];
 const MUT_COLORS: Record<string, string> = {
-  "C>A": "#03bcee",
-  "C>G": "#010101",
-  "C>T": "#e32926",
-  "T>A": "#cbcacb",
-  "T>C": "#a1ce63",
-  "T>G": "#ecc6c5",
+  "C>A": "#03bcee", "G>T": "#7dd3f0",
+  "C>G": "#010101", "G>C": "#808080",
+  "C>T": "#e32926", "G>A": "#f49a97",
+  "T>A": "#cbcacb", "A>T": "#e0dfdf",
+  "T>C": "#a1ce63", "A>G": "#c8e0a1",
+  "T>G": "#ecc6c5", "A>C": "#f5e5e4",
 };
 
 export function SBS96Plot({ spectrumPath }: Props) {
@@ -73,7 +73,7 @@ export function SBS96Plot({ spectrumPath }: Props) {
     xaxis: {
       tickangle: -90,
       tickfont: { size: 9 },
-      title: { text: "Trinucleotide context", y: 0.65 },
+      title: { text: "Trinucleotide context" },
     },
     yaxis: {},
     legend: { orientation: "h", y: 1.1 },

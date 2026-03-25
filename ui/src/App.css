@@ -5,8 +5,8 @@
   --bg: #f0f2f7;
   --surface: #ffffff;
   --surface-raised: #ffffff;
-  --border: #e2e6ef;
-  --border-subtle: #eef0f5;
+  --border: #c8cdd9;
+  --border-subtle: #dde0e8;
 
   --text-primary: #16192b;
   --text-secondary: #5a6178;
@@ -91,7 +91,7 @@
 .tab-bar button {
   padding: 0 14px;
   height: 30px;
-  border-radius: 6px;
+  border-radius: 0px;
   border: none;
   background: transparent;
   color: rgba(255, 255, 255, 0.5);
@@ -127,7 +127,7 @@
 
 .plot-tab-bar button {
   padding: 4px 12px;
-  border-radius: 20px;
+  border-radius: 0px;
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text-secondary);
@@ -139,7 +139,7 @@
 }
 
 .plot-tab-bar button:hover {
-  border-color: var(--accent);
+  border-color: #2d6fd4;
   color: var(--accent);
   background: var(--accent-dim);
 }
@@ -160,7 +160,7 @@
 .section {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 0px;
   padding: 14px 16px;
   box-shadow: 0 1px 3px rgba(22, 25, 43, 0.05);
 }
@@ -208,7 +208,7 @@
   gap: 8px;
   background: var(--bg);
   border: 1px solid var(--border-subtle);
-  border-radius: 6px;
+  border-radius: 0px;
   padding: 5px 10px;
   font-size: 0.8rem;
 }
@@ -230,7 +230,7 @@
   color: var(--text-muted);
   font-size: 0.88rem;
   padding: 2px 5px;
-  border-radius: 4px;
+  border-radius: 0px;
   box-shadow: none;
   line-height: 1;
   transition: color 0.15s, background 0.15s;
@@ -263,7 +263,7 @@
   width: 120px;
   padding: 4px 8px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 0px;
   font-size: 0.82rem;
   font-family: var(--font-mono);
   background: var(--surface);
@@ -315,7 +315,7 @@
 
 button {
   cursor: pointer;
-  border-radius: 7px;
+  border-radius: 0px;
   border: 1px solid var(--border);
   padding: 5px 13px;
   font-size: 0.83rem;
@@ -328,7 +328,7 @@ button {
 }
 
 button:hover:not(:disabled) {
-  border-color: var(--accent);
+  border-color: #2d6fd4;
   color: var(--accent);
   background: var(--accent-dim);
 }
@@ -350,7 +350,7 @@ button:disabled {
   background: var(--accent-dark);
   color: var(--accent);
   border: none;
-  border-radius: 8px;
+  border-radius: 0px;
   letter-spacing: 0.02em;
   box-shadow: 0 2px 8px rgba(22, 25, 43, 0.25);
   transition: box-shadow 0.15s, background 0.15s;
@@ -373,7 +373,7 @@ button:disabled {
 .phase-badge {
   font-size: 0.72rem;
   padding: 3px 10px;
-  border-radius: 20px;
+  border-radius: 0px;
   font-weight: 600;
   font-family: var(--font-ui);
   letter-spacing: 0.03em;
@@ -402,7 +402,7 @@ button:disabled {
 .log-console {
   background: #0e0f1a;
   color: #b8c4d8;
-  border-radius: 8px;
+  border-radius: 0px;
   padding: 12px 14px;
   font-family: var(--font-mono);
   font-size: 0.73rem;
@@ -430,7 +430,7 @@ button:disabled {
 .error-banner {
   background: var(--red-bg);
   border: 1px solid var(--red-border);
-  border-radius: 8px;
+  border-radius: 0px;
   padding: 10px 14px;
   color: var(--red);
   font-size: 0.82rem;
@@ -458,7 +458,7 @@ button:disabled {
 .summary-box {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 0px;
   padding: 12px 14px;
   display: flex;
   flex-direction: column;

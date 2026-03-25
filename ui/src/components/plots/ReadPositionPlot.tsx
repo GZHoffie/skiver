@@ -150,7 +150,7 @@ export function ReadPositionPlot({ readPositionPath }: Props) {
         consensus, given that the previous (<em>t</em>&#8209;1) bases agree.
       </p>
       <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "0 80px 20px 80px" }}>
-        <label style={{ whiteSpace: "nowrap", fontSize: "13px" }}>X limit:</label>
+        <label style={{ whiteSpace: "nowrap", fontSize: "13px" }}>Number of bases from the two ends of the reads:</label>
         <select
           value={effectiveLimit}
           onChange={(e) => setXLimit(Number(e.target.value))}
