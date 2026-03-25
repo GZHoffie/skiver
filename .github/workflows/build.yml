@@ -60,13 +60,15 @@ jobs:
             libssl-dev \
             libgtk-3-dev
 
-      - name: Install OpenSSL (Windows)
+      - name: Setup OpenSSL (Windows)
         if: matrix.platform == 'windows-latest'
         shell: pwsh
         run: |
-          vcpkg install openssl:x64-windows-static-md
-          echo "OPENSSL_DIR=$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows-static-md" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          echo "OPENSSL_STATIC=1" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          $opensslDir = "C:\Program Files\OpenSSL-Win64"
+          if (-not (Test-Path $opensslDir)) {
+            choco install openssl -y --no-progress
+          }
+          Add-Content $env:GITHUB_ENV "OPENSSL_DIR=$opensslDir"
 
       - name: Install frontend dependencies
         working-directory: ui
