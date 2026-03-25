@@ -73,10 +73,12 @@ export function SBS96Plot({ spectrumPath }: Props) {
     xaxis: {
       tickangle: -90,
       tickfont: { size: 9 },
-      title: "Trinucleotide context",
+      title: { text: "Trinucleotide context" },
     },
     yaxis: {},
     legend: { orientation: "h", y: 1.1 },
+    font: { family: "DejaVu Sans" },
+    hoverlabel: { font: { family: "DejaVu Sans" } },
     margin: { t: 60, b: 120, l: 80, r: 20 },
     annotations: [
       { text: "Count", xref: "paper", yref: "paper", x: -0.06, y: 0.5, showarrow: false, textangle: -90, font: { size: 12 } },

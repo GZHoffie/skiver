@@ -43,49 +43,64 @@ export function HazardSurvivalPlot({ hazardPath, errorRatePath }: Props) {
     {
       type: "scatter", x: t, y: lo, mode: "lines",
       line: { color: "transparent" }, showlegend: false,
-      name: "5th pct", xaxis: "x", yaxis: "y",
+      name: "5th pct", xaxis: "x", yaxis: "y", legend: "legend",
     },
     {
       type: "scatter", x: t, y: hi, mode: "lines",
       fill: "tonexty", fillcolor: "rgba(112,128,144,0.25)",
-      line: { color: "transparent" }, name: "5–95% band",
-      xaxis: "x", yaxis: "y",
+      line: { color: "transparent" }, name: "5–95% percentile",
+      xaxis: "x", yaxis: "y", legend: "legend",
     },
     {
       type: "scatter", x: t, y: hr, mode: "lines",
-      line: { color: "slategray", width: 2 }, name: "Empirical",
-      xaxis: "x", yaxis: "y",
+      line: { color: "slategray", width: 4 }, name: "Estimated hazard rate",
+      xaxis: "x", yaxis: "y", legend: "legend",
     },
     {
       type: "scatter", x: t, y: fittedHazard, mode: "lines",
-      line: { color: "indianred", width: 2, dash: "dash" }, name: "Fitted (Weibull)",
-      xaxis: "x", yaxis: "y",
+      line: { color: "steelblue", width: 4, dash: "dash" }, name: "Fitted hazard rate",
+      xaxis: "x", yaxis: "y", legend: "legend",
     },
   ];
 
   const survivalTraces: Plotly.Data[] = [
     {
       type: "scatter", x: tSurv, y: survival, mode: "lines",
-      line: { color: "steelblue", width: 2 }, name: "Survival S(t)",
-      xaxis: "x2", yaxis: "y2",
+      line: { color: "steelblue", width: 4, dash: "dash" }, name: "Fitted survival rate",
+      xaxis: "x2", yaxis: "y2", legend: "legend2",
     },
   ];
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const layout: any = {
-    xaxis:  { title: "t",  domain: [0, 0.45],  anchor: "y"  },
-    yaxis:  {              domain: [0, 1],     anchor: "x"  },
-    xaxis2: { title: "t",  domain: [0.55, 1],  anchor: "y2" },
-    yaxis2: {              domain: [0, 1],     anchor: "x2" },
-    legend: { x: 0, y: 1.1, orientation: "h" },
-    margin: { t: 50, l: 80, r: 20, b: 50 },
+    xaxis:  { title: { text: "<i>t</i>" }, domain: [0, 0.44],  anchor: "y"  },
+    yaxis:  {                       domain: [0, 1],     anchor: "x"  },
+    xaxis2: { title: { text: "<i>t</i>" }, domain: [0.56, 1],  anchor: "y2" },
+    yaxis2: {                       domain: [0, 1],     anchor: "x2" },
+    legend: {
+      x: 0, y: 1.02, xanchor: "left", yanchor: "bottom",
+      orientation: "h",
+    },
+    legend2: {
+      x: 0.56, y: 1.02, xanchor: "left", yanchor: "bottom",
+      orientation: "h",
+    },
+    font: { family: "DejaVu Sans" },
+    hoverlabel: { font: { family: "DejaVu Sans" } },
+    margin: { t: 110, l: 80, r: 20, b: 50 },
     annotations: [
       // subplot titles
-      { text: "Hazard rate",        xref: "paper", yref: "paper", x: 0.22,  y: 1.06, showarrow: false, font: { size: 14 } },
-      { text: "Survival rate",      xref: "paper", yref: "paper", x: 0.78,  y: 1.06, showarrow: false, font: { size: 14 } },
+      { text: "Hazard rate",   xref: "paper", yref: "paper", x: 0.22, y: 1.26, showarrow: false, xanchor: "center", font: { size: 15 } },
+      { text: "Error rate at each position",
+        xref: "paper", yref: "paper", x: 0.22, y: 1.19, showarrow: false, xanchor: "center",
+        font: { size: 11, color: "#9099b0" } },
+      { text: "Survival rate", xref: "paper", yref: "paper", x: 0.78, y: 1.26, showarrow: false, xanchor: "center", font: { size: 15 } },
+      { text: "Probability that a <i>t</i>-mer is free of sequencing errors",
+        xref: "paper", yref: "paper", x: 0.78, y: 1.19, showarrow: false, xanchor: "center",
+        font: { size: 11, color: "#9099b0" } },
       // y-axis titles (rotated annotations)
-      { text: "Hazard rate h(t)",   xref: "paper", yref: "paper", x: -0.07, y: 0.5,  showarrow: false, textangle: -90, font: { size: 12 } },
-      { text: "Survival S(t)",      xref: "paper", yref: "paper", x: 0.49,  y: 0.5,  showarrow: false, textangle: -90, font: { size: 12 } },
+      { text: "Hazard rate <i>h</i>(<i>t</i>)", xref: "paper", yref: "paper", x: -0.07, y: 0.5, showarrow: false, textangle: -90, font: { size: 12 } },
+      { text: "Survival rate <i>S</i>(<i>t</i>)",    xref: "paper", yref: "paper", x: 0.52,  y: 0.5, showarrow: false, textangle: -90, font: { size: 12 } },
     ],
   };
 
@@ -94,7 +109,7 @@ export function HazardSurvivalPlot({ hazardPath, errorRatePath }: Props) {
       data={[...hazardTraces, ...survivalTraces]}
       layout={layout}
       useResizeHandler
-      style={{ width: "100%", height: "420px" }}
+      style={{ width: "100%", height: "480px" }}
     />
   );
 }

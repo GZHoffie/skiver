@@ -24,6 +24,25 @@ function fmt(v: number, digits = 4): string {
   return v.toPrecision(digits);
 }
 
+function fmtPct(v: number, digits = 4): string {
+  if (v === undefined || v === null || isNaN(v)) return "—";
+  return (v * 100).toPrecision(digits) + "%";
+}
+
+function fmtCoverage(v: number): string {
+  if (v === undefined || v === null || isNaN(v)) return "—";
+  return Math.round(v) + "x";
+}
+
+function transformCi(ci: string, transform: (v: number) => string): string {
+  if (!ci) return ci;
+  const [lo, hi] = ci.split("~");
+  const loN = parseFloat(lo);
+  const hiN = parseFloat(hi);
+  if (isNaN(loN) || isNaN(hiN)) return ci;
+  return `${transform(loN)}~${transform(hiN)}`;
+}
+
 function Box({
   label,
   value,
@@ -59,33 +78,33 @@ export function SummaryBoxes({ errorRatePath }: Props) {
     <div className="summary-boxes">
       <Box
         label="Per-base error rate"
-        value={fmt(r.per_base_error_rate)}
-        ci={r["per_base_error_rate_5-95th_percentile"]}
+        value={fmtPct(r.per_base_error_rate)}
+        ci={transformCi(r["per_base_error_rate_5-95th_percentile"], (v) => fmtPct(v))}
       />
       <Box
         label="Effective error rate"
-        value={fmt(r.effective_error_rate)}
-        ci={r["effective_error_rate_5-95th_percentile"]}
+        value={fmtPct(r.effective_error_rate)}
+        ci={transformCi(r["effective_error_rate_5-95th_percentile"], (v) => fmtPct(v))}
       />
       <Box
-        label="λ (lambda)"
+        label="lambda"
         value={fmt(r.lambda)}
         ci={r["lambda_5-95th_percentile"]}
       />
       <Box
-        label="β (beta)"
+        label="beta"
         value={fmt(r.beta)}
         ci={r["beta_5-95th_percentile"]}
       />
       <Box
-        label="Median k-mer coverage"
-        value={fmt(r.key_median_coverage, 5)}
-        ci={r["key_coverage_5-95th_percentile"]}
+        label="Median key coverage"
+        value={fmtCoverage(r.key_median_coverage)}
+        ci={transformCi(r["key_coverage_5-95th_percentile"], fmtCoverage)}
       />
       <Box
         label="True median coverage"
-        value={fmt(r.true_median_coverage, 5)}
-        ci={r["true_coverage_5-95th_percentile"]}
+        value={fmtCoverage(r.true_median_coverage)}
+        ci={transformCi(r["true_coverage_5-95th_percentile"], fmtCoverage)}
       />
     </div>
   );

@@ -93,7 +93,7 @@ export function CoverageHistogram({ kvmerPath, errorRatePath }: Props) {
     {
       type: "histogram",
       x: allFiltered,
-      name: "All k-mers",
+      name: "All keys",
       opacity: 0.5,
       marker: { color: "slategray" },
       nbinsx: 100,
@@ -111,11 +111,13 @@ export function CoverageHistogram({ kvmerPath, errorRatePath }: Props) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const layout: any = {
     barmode: "overlay",
-    xaxis: { title: "Estimated true coverage" },
+    xaxis: { title: { text: "Estimated true coverage" } },
     yaxis: { type: "log" },
+    font: { family: "DejaVu Sans" },
+    hoverlabel: { font: { family: "DejaVu Sans" } },
     margin: { t: 30, l: 80, r: 20, b: 50 },
     annotations: [
-      { text: "Count", xref: "paper", yref: "paper", x: -0.09, y: 0.5, showarrow: false, textangle: -90, font: { size: 12 } },
+      { text: "Count", xref: "paper", yref: "paper", x: -0.06, y: 0.5, showarrow: false, textangle: -90, font: { size: 14 } },
     ],
   };
 

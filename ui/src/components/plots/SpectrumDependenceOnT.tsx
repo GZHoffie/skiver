@@ -69,42 +69,74 @@ export function SpectrumDependenceOnT({ depTPath }: Props) {
     line: { color: typeColors[type], width: 2 },
     xaxis: "x",
     yaxis: "y",
+    legend: "legend",
   }));
 
-  // Right panel: individual operations
+  // Right panel: individual operations, normalised by total across all ops at each t
   const uniqueOps = [...new Set(rows.map((r) => r.operation as string))];
-  const opColors = ["#1f77b4","#ff7f0e","#2ca02c","#d62728","#9467bd","#8c564b","#e377c2","#7f7f7f","#bcbd22","#17becf"];
 
-  const rightTraces: Plotly.Data[] = uniqueOps.map((op, idx) => {
+  const colTotals = positions.map((_, i) =>
+    rows.reduce((s, r) => s + ((r[posCols[i]] as number) ?? 0), 0)
+  );
+
+  // Colour palettes: substitutions → steelblue shades,
+  //                 insertions    → indianred shades,
+  //                 deletions     → seagreen shades
+  const SUB_BLUES  = ["#c6dff5","#93c4ea","#5ea8de","#3b8ccc",
+                      "#1e70b8","#1058a0","#084288","#042e6e",
+                      "#021c50","#01112e","#000a1c","#00040e"];
+  const INS_REDS   = ["#fcc4c4","#f08080","#cd5c5c","#9e2222"];
+  const DEL_GREENS = ["#b8e8cc","#70c898","#2e8b57","#125e35"];
+
+  const subOps = uniqueOps.filter((op) => !op.startsWith("->") && !op.endsWith(">-"));
+  const insOps = uniqueOps.filter((op) => op.startsWith("->"));
+  const delOps = uniqueOps.filter((op) => op.endsWith(">-"));
+
+  const opColorMap: Record<string, string> = {};
+  subOps.forEach((op, i) => { opColorMap[op] = SUB_BLUES[i % SUB_BLUES.length]; });
+  insOps.forEach((op, i) => { opColorMap[op] = INS_REDS[i % INS_REDS.length]; });
+  delOps.forEach((op, i) => { opColorMap[op] = DEL_GREENS[i % DEL_GREENS.length]; });
+
+  const rightTraces: Plotly.Data[] = uniqueOps.map((op) => {
     const opRows = rows.filter((r) => r.operation === op);
-    const vals = positions.map((_, i) =>
-      opRows.reduce((s, r) => s + ((r[posCols[i]] as number) ?? 0), 0)
-    );
+    const vals = positions.map((_, i) => {
+      const raw = opRows.reduce((s, r) => s + ((r[posCols[i]] as number) ?? 0), 0);
+      return colTotals[i] > 0 ? raw / colTotals[i] : 0;
+    });
     return {
       type: "scatter",
       x: positions,
       y: vals,
       mode: "lines",
       name: op,
-      line: { color: opColors[idx % opColors.length], width: 1 },
+      line: { color: opColorMap[op] ?? "#888", width: 1.5 },
       xaxis: "x2",
       yaxis: "y2",
+      legend: "legend2",
     };
   });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const layout: any = {
-    xaxis:  { title: "Position t", domain: [0, 0.45],  anchor: "y"  },
-    yaxis:  {                      domain: [0, 1],     anchor: "x"  },
-    xaxis2: { title: "Position t", domain: [0.55, 1],  anchor: "y2" },
-    yaxis2: {                      domain: [0, 1],     anchor: "x2" },
+    xaxis:  { title: { text: "<i>t</i>", font: { size: 12 } }, domain: [0, 0.45], anchor: "y"  },
+    yaxis:  {                                domain: [0, 1],    anchor: "x"  },
+    xaxis2: { title: { text: "<i>t</i>", font: { size: 12 } }, domain: [0.55, 1], anchor: "y2" },
+    yaxis2: {                                domain: [0, 1],    anchor: "x2" },
+    legend: {
+      x: 0, y: 1.02, xanchor: "left", yanchor: "bottom", orientation: "h",
+    },
+    legend2: {
+      x: 1.02, y: 1.0, xanchor: "left", yanchor: "top",
+    },
     annotations: [
-      { text: "Error type composition", xref: "paper", yref: "paper", x: 0.22,  y: 1.05, showarrow: false, font: { size: 13 } },
-      { text: "Individual operations",  xref: "paper", yref: "paper", x: 0.78,  y: 1.05, showarrow: false, font: { size: 13 } },
-      { text: "Proportion",             xref: "paper", yref: "paper", x: -0.07, y: 0.5,  showarrow: false, textangle: -90, font: { size: 12 } },
-      { text: "Frequency",              xref: "paper", yref: "paper", x: 0.49,  y: 0.5,  showarrow: false, textangle: -90, font: { size: 12 } },
+      { text: "Error type composition", xref: "paper", yref: "paper", x: 0.22, y: 1.18, showarrow: false, xanchor: "center", font: { size: 15 } },
+      { text: "Individual operations",  xref: "paper", yref: "paper", x: 0.78, y: 1.18, showarrow: false, xanchor: "center", font: { size: 15 } },
+      { text: "Proportion",             xref: "paper", yref: "paper", x: -0.07, y: 0.5, showarrow: false, textangle: -90, font: { size: 12 } },
+      { text: "Proportion",             xref: "paper", yref: "paper", x: 0.49,  y: 0.5, showarrow: false, textangle: -90, font: { size: 12 } },
     ],
-    margin: { t: 50, l: 80, r: 20, b: 50 },
+    font: { family: "DejaVu Sans" },
+    hoverlabel: { font: { family: "DejaVu Sans" } },
+    margin: { t: 90, l: 80, r: 160, b: 50 },
   };
 
   return (
@@ -112,7 +144,7 @@ export function SpectrumDependenceOnT({ depTPath }: Props) {
       data={[...leftTraces, ...rightTraces]}
       layout={layout}
       useResizeHandler
-      style={{ width: "100%", height: "420px" }}
+      style={{ width: "100%", height: "460px" }}
     />
   );
 }
