@@ -1,3 +1,43 @@
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("./assets/fonts/JetBrainsMono-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("./assets/fonts/JetBrainsMono-Medium.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("./assets/fonts/JetBrainsMono-SemiBold.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "DejaVu Sans";
+  src: url("./assets/fonts/DejaVuSans.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "DejaVu Sans";
+  src: url("./assets/fonts/DejaVuSans-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   --font-ui: "DejaVu Sans", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", monospace;
@@ -62,7 +102,7 @@
 }
 
 .app-header h1 {
-  font-size: 1rem;
+  font-size: 1.15rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -96,7 +136,7 @@
   background: transparent;
   color: rgba(255, 255, 255, 0.5);
   cursor: pointer;
-  font-size: 0.83rem;
+  font-size: 1rem;
   font-weight: 500;
   font-family: var(--font-ui);
   transition: color 0.15s, background 0.15s;
@@ -132,7 +172,7 @@
   background: var(--surface);
   color: var(--text-secondary);
   cursor: pointer;
-  font-size: 0.8rem;
+  font-size: 0.95rem;
   font-weight: 500;
   font-family: var(--font-ui);
   transition: all 0.15s;
@@ -371,7 +411,7 @@ button:disabled {
 /* ---- Status badges ---- */
 
 .phase-badge {
-  font-size: 0.72rem;
+  font-size: 0.86rem;
   padding: 3px 10px;
   border-radius: 0px;
   font-weight: 600;
@@ -467,7 +507,7 @@ button:disabled {
 }
 
 .summary-box-label {
-  font-size: 0.68rem;
+  font-size: 0.82rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.07em;
@@ -475,7 +515,7 @@ button:disabled {
 }
 
 .summary-box-value {
-  font-size: 1.1rem;
+  font-size: 1.3rem;
   font-weight: 600;
   color: var(--text-primary);
   font-family: var(--font-mono);
@@ -483,7 +523,7 @@ button:disabled {
 }
 
 .summary-box-ci {
-  font-size: 0.68rem;
+  font-size: 0.82rem;
   color: var(--text-muted);
   font-family: var(--font-mono);
 }
@@ -491,6 +531,6 @@ button:disabled {
 .summary-boxes-loading {
   color: var(--text-muted);
   font-style: italic;
-  font-size: 0.82rem;
+  font-size: 0.95rem;
   padding: 8px 0;
 }
