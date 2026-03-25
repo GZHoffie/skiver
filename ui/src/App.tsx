@@ -2,6 +2,7 @@ import { useState } from "react";
 import { SketchParams, AnalyzeParams } from "./types";
 import { useSkiverRun } from "./hooks/useSkiverRun";
 import { FileSelector } from "./components/workflow/FileSelector";
+import { ReferenceSelector } from "./components/workflow/ReferenceSelector";
 import { OutputConfig } from "./components/workflow/OutputConfig";
 import { ParameterPanel } from "./components/workflow/ParameterPanel";
 import { LogConsole } from "./components/workflow/LogConsole";
@@ -19,7 +20,7 @@ const DEFAULT_SKETCH: SketchParams = {
   input_files: [],
   output_path: "",
   k: 21,
-  v: 13,
+  v: 19,
   c: null,
   trim_front: 0,
   trim_back: 0,
@@ -30,7 +31,7 @@ const DEFAULT_ANALYZE: AnalyzeParams = {
   kvmer_path: "",
   output_prefix: "",
   k: 21,
-  v: 13,
+  v: 19,
   lower_bound: null,
   forward_only: false,
   use_all: false,
@@ -39,6 +40,7 @@ const DEFAULT_ANALYZE: AnalyzeParams = {
   ignore_smallest_t: 2,
   hazard_model: "weibull",
   num_experiments: 100,
+  reference: null,
 };
 
 type Tab = "run" | "results";
@@ -62,23 +64,20 @@ export default function App() {
   const [sketchParams, setSketchParams] = useState<SketchParams>(DEFAULT_SKETCH);
   const [analyzeParams, setAnalyzeParams] = useState<AnalyzeParams>(DEFAULT_ANALYZE);
 
-  const { phase, logs, csvPaths, errorMessage, run, reset } = useSkiverRun();
+  const { phase, logs, csvPaths, errorMessage, run } = useSkiverRun();
 
   const busy = phase === "sketching" || phase === "analyzing";
 
+  const [errors, setErrors] = useState({ inputFiles: false, outputDir: false, outputPrefix: false });
+
   function handleRun() {
-    if (inputFiles.length === 0) {
-      alert("Please add at least one input file.");
-      return;
-    }
-    if (!outputDir) {
-      alert("Please select an output directory.");
-      return;
-    }
-    if (!outputPrefix.trim()) {
-      alert("Please enter an output prefix.");
-      return;
-    }
+    const e = {
+      inputFiles: inputFiles.length === 0,
+      outputDir: !outputDir,
+      outputPrefix: !outputPrefix.trim(),
+    };
+    setErrors(e);
+    if (e.inputFiles || e.outputDir || e.outputPrefix) return;
 
     const kvmerPath = `${outputDir}/${outputPrefix}.kvmer`;
     const fullPrefix = `${outputDir}/${outputPrefix}`;
@@ -131,13 +130,25 @@ export default function App() {
 
       {tab === "run" && (
         <main className="run-panel">
-          <FileSelector files={inputFiles} onChange={setInputFiles} disabled={busy} />
+          <FileSelector
+            files={inputFiles}
+            onChange={(f) => { setInputFiles(f); if (f.length > 0) setErrors((e) => ({ ...e, inputFiles: false })); }}
+            disabled={busy}
+            error={errors.inputFiles}
+          />
+          <ReferenceSelector
+            reference={analyzeParams.reference}
+            onChange={(ref) => setAnalyzeParams((p) => ({ ...p, reference: ref }))}
+            disabled={busy}
+          />
           <OutputConfig
             outputDir={outputDir}
             outputPrefix={outputPrefix}
-            onDirChange={setOutputDir}
-            onPrefixChange={setOutputPrefix}
+            onDirChange={(d) => { setOutputDir(d); if (d) setErrors((e) => ({ ...e, outputDir: false })); }}
+            onPrefixChange={(p) => { setOutputPrefix(p); if (p.trim()) setErrors((e) => ({ ...e, outputPrefix: false })); }}
             disabled={busy}
+            dirError={errors.outputDir}
+            prefixError={errors.outputPrefix}
           />
           <ParameterPanel
             sketch={sketchParams}
@@ -153,7 +164,7 @@ export default function App() {
                 Run Skiver
               </button>
             ) : phase === "done" ? (
-              <button className="run-btn secondary" onClick={reset}>
+              <button className="run-btn" onClick={handleRun}>
                 Run again
               </button>
             ) : (

@@ -17,7 +17,7 @@ export function LogConsole({ logs }: Props) {
   return (
     <div className="log-console">
       {logs.map((log, i) => (
-        <div key={i} className={`log-line log-${log.stream}`}>
+        <div key={i} className={`log-line log-${log.stream}${log.stream === "stdout" && log.line.startsWith("$ ") ? " log-cmd" : ""}`}>
           {log.stream === "exit"
             ? `[exit code ${log.exit_code}]`
             : log.line}

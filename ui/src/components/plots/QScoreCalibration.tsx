@@ -74,7 +74,7 @@ export function QScoreCalibration({ phredPath }: Props) {
   const layout: any = {
     xaxis:  { title: "",              domain: [0, 1],     anchor: "y",  showticklabels: false },
     yaxis:  {                         domain: [0.32, 1],  anchor: "x",  type: logScale ? "log" : "linear" },
-    xaxis2: { title: { text: "Phred Q-score" }, domain: [0, 1],     anchor: "y2" },
+    xaxis2: { title: { text: "Phred Q-score" }, domain: [0, 1],     anchor: "y2", matches: "x" },
     yaxis2: {                         domain: [0, 0.28],  anchor: "x2" },
     legend: { x: 1, xanchor: "right", y: 1 },
     font: { family: "DejaVu Sans" },
@@ -82,7 +82,7 @@ export function QScoreCalibration({ phredPath }: Props) {
     margin: { t: 30, l: 80, r: 20, b: 50 },
     annotations: [
       { text: "Error rate", xref: "paper", yref: "paper", x: -0.06, y: 0.66, showarrow: false, textangle: -90, font: { size: 14 } },
-      { text: "Count",      xref: "paper", yref: "paper", x: -0.06, y: 0.14, showarrow: false, textangle: -90, font: { size: 14 } },
+      { text: "Count",      xref: "paper", yref: "paper", x: -0.06, y: 0.08, showarrow: false, textangle: -90, font: { size: 14 } },
     ],
   };
 
@@ -100,7 +100,7 @@ export function QScoreCalibration({ phredPath }: Props) {
         data={traces}
         layout={layout}
         useResizeHandler
-        style={{ width: "100%", height: "500px" }}
+        style={{ width: "100%", height: "700px" }}
       />
     </div>
   );

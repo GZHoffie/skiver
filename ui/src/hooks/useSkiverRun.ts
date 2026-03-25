@@ -15,6 +15,7 @@ export function useSkiverRun() {
   const [csvPaths, setCsvPaths] = useState<CsvPaths | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const unlistenRef = useRef<UnlistenFn | null>(null);
+  const lastSketchRef = useRef<SketchParams | null>(null);
 
   const appendLog = useCallback((entry: LogLine) => {
     setLogs((prev) => [...prev, entry]);
@@ -26,6 +27,10 @@ export function useSkiverRun() {
       setCsvPaths(null);
       setErrorMessage(null);
 
+      const sketchChanged =
+        !lastSketchRef.current ||
+        JSON.stringify(sketchParams) !== JSON.stringify(lastSketchRef.current);
+
       // Set up log listener
       if (unlistenRef.current) unlistenRef.current();
       unlistenRef.current = await listen<LogLine>("skiver-log", (event) => {
@@ -34,9 +39,14 @@ export function useSkiverRun() {
 
       try {
         // --- Sketch ---
-        setPhase("sketching");
-        appendLog({ stream: "stdout", line: "=== skiver sketch ===" });
-        await invoke("run_sketch", { params: sketchParams });
+        if (sketchChanged) {
+          setPhase("sketching");
+          appendLog({ stream: "stdout", line: "=== skiver sketch ===" });
+          await invoke("run_sketch", { params: sketchParams });
+          lastSketchRef.current = sketchParams;
+        } else {
+          appendLog({ stream: "stdout", line: "=== skiver sketch (skipped — params unchanged) ===" });
+        }
 
         // --- Analyze ---
         setPhase("analyzing");

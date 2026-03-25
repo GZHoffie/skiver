@@ -28,12 +28,21 @@ pub async fn run_analyze(app: tauri::AppHandle, params: AnalyzeParams) -> Result
     if let Some(lb) = params.lower_bound {
         args.extend(["-l".into(), lb.to_string()]);
     }
+    if let Some(ref r) = params.reference {
+        args.extend(["-r".into(), r.clone()]);
+    }
     if params.forward_only {
         args.push("--forward-only".into());
     }
     if params.use_all {
         args.push("--use-all".into());
     }
+
+    app.emit("skiver-log", LogEvent {
+        stream: "stdout".into(),
+        line: format!("$ skiver {}", args.join(" ")),
+        exit_code: None,
+    }).ok();
 
     let (mut rx, _child) = app
         .shell()

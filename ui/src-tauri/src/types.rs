@@ -26,6 +26,7 @@ pub struct AnalyzeParams {
     pub ignore_smallest_t: usize,
     pub hazard_model: String,
     pub num_experiments: u32,
+    pub reference: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

@@ -24,6 +24,7 @@ export interface AnalyzeParams {
   ignore_smallest_t: number;
   hazard_model: string;
   num_experiments: number;
+  reference: string | null;
 }
 
 export interface LogLine {

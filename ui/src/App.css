@@ -165,6 +165,11 @@
   box-shadow: 0 1px 3px rgba(22, 25, 43, 0.05);
 }
 
+.section.error {
+  border-color: var(--red-border);
+  background: var(--red-bg);
+}
+
 .section h3 {
   font-size: 0.72rem;
   font-weight: 700;
@@ -290,6 +295,16 @@
   max-width: 400px;
 }
 
+.path-display.error {
+  color: var(--red);
+  font-weight: 600;
+}
+
+.field-row input.error {
+  border-color: var(--red);
+  background: var(--red-bg);
+}
+
 .param-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -391,10 +406,14 @@ button:disabled {
   padding: 12px 14px;
   font-family: var(--font-mono);
   font-size: 0.73rem;
-  max-height: 280px;
-  overflow-y: auto;
+  overflow-y: visible;
   line-height: 1.65;
   border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.log-line.log-cmd {
+  color: #93c5fd;
+  margin-top: 6px;
 }
 
 .log-line.log-stderr {

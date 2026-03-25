@@ -23,6 +23,12 @@ pub async fn run_sketch(app: tauri::AppHandle, params: SketchParams) -> Result<(
         args.push("--forward-only".into());
     }
 
+    app.emit("skiver-log", LogEvent {
+        stream: "stdout".into(),
+        line: format!("$ skiver {}", args.join(" ")),
+        exit_code: None,
+    }).ok();
+
     let (mut rx, _child) = app
         .shell()
         .sidecar("skiver")

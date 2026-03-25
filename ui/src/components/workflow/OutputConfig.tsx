@@ -6,6 +6,8 @@ interface Props {
   onDirChange: (d: string) => void;
   onPrefixChange: (p: string) => void;
   disabled: boolean;
+  dirError?: boolean;
+  prefixError?: boolean;
 }
 
 export function OutputConfig({
@@ -14,6 +16,8 @@ export function OutputConfig({
   onDirChange,
   onPrefixChange,
   disabled,
+  dirError,
+  prefixError,
 }: Props) {
   async function pick() {
     const dir = await invoke<string>("pick_output_dir");
@@ -28,7 +32,7 @@ export function OutputConfig({
         <button onClick={pick} disabled={disabled}>
           Browse…
         </button>
-        <span className="path-display">{outputDir || "Not selected"}</span>
+        <span className={`path-display${dirError ? " error" : ""}`}>{outputDir || "Not selected"}</span>
       </div>
       <div className="field-row">
         <label>Prefix</label>
@@ -38,6 +42,7 @@ export function OutputConfig({
           onChange={(e) => onPrefixChange(e.target.value)}
           disabled={disabled}
           placeholder="e.g. sample1"
+          className={prefixError ? "error" : undefined}
         />
       </div>
     </div>

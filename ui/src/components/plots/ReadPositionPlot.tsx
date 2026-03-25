@@ -45,8 +45,13 @@ export function ReadPositionPlot({ readPositionPath }: Props) {
     [allStart, allEnd]
   );
 
+  const xLimitOptions = useMemo(
+    () => Array.from({ length: 20 }, (_, i) => (i + 1) * 50).filter((v) => v <= maxPos),
+    [maxPos]
+  );
+
   const [xLimit, setXLimit] = useState<number>(100);
-  const effectiveLimit = xLimit;
+  const effectiveLimit = Math.min(xLimit, maxPos);
 
   if (loading) return <div className="plot-loading">Loading…</div>;
   if (!rows) return null;
@@ -140,18 +145,17 @@ export function ReadPositionPlot({ readPositionPath }: Props) {
 
   return (
     <div style={{ width: "100%" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: "12px", padding: "0 80px 20px 80px" }}>
-        <label style={{ whiteSpace: "nowrap", fontSize: "13px" }}>
-          X limit: {effectiveLimit}
-        </label>
-        <input
-          type="range"
-          min={1}
-          max={Math.min(maxPos, 1000)}
+      <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "0 80px 20px 80px" }}>
+        <label style={{ whiteSpace: "nowrap", fontSize: "13px" }}>X limit:</label>
+        <select
           value={effectiveLimit}
           onChange={(e) => setXLimit(Number(e.target.value))}
-          style={{ flex: 1 }}
-        />
+          style={{ fontSize: "13px" }}
+        >
+          {xLimitOptions.map((v) => (
+            <option key={v} value={v}>{v}</option>
+          ))}
+        </select>
       </div>
       <Plot
         data={traces}
