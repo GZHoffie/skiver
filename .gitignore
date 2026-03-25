@@ -17,3 +17,4 @@ node_modules/
 dist/
 src-tauri/target/
 src-tauri/gen/
+ui/src-tauri/binaries/skiver-*

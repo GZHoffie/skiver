@@ -88,6 +88,10 @@ export function QScoreCalibration({ phredPath }: Props) {
 
   return (
     <div style={{ width: "100%" }}>
+      <p style={{ fontSize: "13px", color: "#555", fontStyle: "italic", margin: "0 20px 8px 20px" }}>
+        The empirical error rate is calculated to be the probability that the base disagrees with the
+        consensus, given that the previous (<em>t</em>&#8209;1) bases agree.
+      </p>
       <div style={{ display: "flex", justifyContent: "flex-end", padding: "0 20px 8px 0" }}>
         <button
           onClick={() => setLogScale((v) => !v)}
