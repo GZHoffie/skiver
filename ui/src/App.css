@@ -1,0 +1,393 @@
+:root {
+  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #1a1a2e;
+  background-color: #f4f6f9;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* ---- Layout ---- */
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 20px;
+  background: #1a1a2e;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.app-header h1 {
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: #7ec8e3;
+}
+
+.run-panel,
+.results-panel {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ---- Tab bars ---- */
+
+.tab-bar,
+.plot-tab-bar {
+  display: flex;
+  gap: 4px;
+}
+
+.tab-bar button,
+.plot-tab-bar button {
+  padding: 5px 14px;
+  border-radius: 6px;
+  border: 1px solid #444;
+  background: transparent;
+  color: #ccc;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.tab-bar button.active,
+.plot-tab-bar button.active {
+  background: #7ec8e3;
+  color: #1a1a2e;
+  border-color: #7ec8e3;
+  font-weight: 600;
+}
+
+.tab-bar button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.plot-tab-bar {
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.plot-tab-bar button {
+  border-color: #ccc;
+  color: #333;
+  background: #fff;
+}
+
+.plot-tab-bar button.active {
+  background: #1a1a2e;
+  color: #7ec8e3;
+  border-color: #1a1a2e;
+}
+
+.plot-area {
+  flex: 1;
+}
+
+/* ---- Sections ---- */
+
+.section {
+  background: #fff;
+  border: 1px solid #dde1ea;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.section h3 {
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #555;
+  margin-bottom: 10px;
+}
+
+.section h4 {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 8px;
+}
+
+.hint {
+  font-size: 0.78rem;
+  color: #888;
+  margin-bottom: 8px;
+}
+
+/* ---- File list ---- */
+
+.file-list {
+  list-style: none;
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.file-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #f4f6f9;
+  border-radius: 5px;
+  padding: 5px 10px;
+  font-size: 0.82rem;
+}
+
+.file-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: monospace;
+}
+
+.remove-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #888;
+  font-size: 0.9rem;
+  padding: 2px 5px;
+  border-radius: 4px;
+  box-shadow: none;
+}
+
+.remove-btn:hover {
+  color: #c00;
+  background: #fee;
+}
+
+/* ---- Fields ---- */
+
+.field-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.field-row label {
+  width: 160px;
+  flex-shrink: 0;
+  font-size: 0.83rem;
+  color: #444;
+}
+
+.field-row input[type="number"],
+.field-row input[type="text"],
+.field-row select {
+  width: 120px;
+  padding: 4px 8px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  font-size: 0.83rem;
+  background: #fff;
+  color: #1a1a2e;
+  box-shadow: none;
+}
+
+.field-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+}
+
+.path-display {
+  font-size: 0.78rem;
+  color: #666;
+  font-family: monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 400px;
+}
+
+.param-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+/* ---- Buttons ---- */
+
+button {
+  cursor: pointer;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  padding: 6px 14px;
+  font-size: 0.85rem;
+  font-family: inherit;
+  background: #fff;
+  color: #1a1a2e;
+  transition: border-color 0.15s, background 0.15s;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+button:hover:not(:disabled) {
+  border-color: #1a1a2e;
+  background: #f0f4f8;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.run-controls {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.run-btn {
+  padding: 10px 32px;
+  font-size: 1rem;
+  font-weight: 600;
+  background: #1a1a2e;
+  color: #7ec8e3;
+  border: none;
+  border-radius: 8px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+}
+
+.run-btn:hover:not(:disabled) {
+  background: #2a2a4e;
+  border: none;
+}
+
+.run-btn.secondary {
+  background: #5a6a8a;
+  color: #fff;
+}
+
+/* ---- Status badges ---- */
+
+.phase-badge {
+  font-size: 0.78rem;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-weight: 600;
+}
+
+.phase-badge.busy {
+  background: #ffe082;
+  color: #333;
+}
+
+.phase-badge.done {
+  background: #a5d6a7;
+  color: #1b5e20;
+}
+
+.phase-badge.error {
+  background: #ef9a9a;
+  color: #b71c1c;
+}
+
+/* ---- Log console ---- */
+
+.log-console {
+  background: #0d0d1a;
+  color: #c5d0e0;
+  border-radius: 6px;
+  padding: 12px 14px;
+  font-family: "Courier New", monospace;
+  font-size: 0.75rem;
+  max-height: 300px;
+  overflow-y: auto;
+  line-height: 1.6;
+}
+
+.log-line.log-stderr {
+  color: #ffb3b3;
+}
+
+.log-line.log-exit {
+  color: #b3e5fc;
+  font-style: italic;
+}
+
+/* ---- Error banner ---- */
+
+.error-banner {
+  background: #fff3f3;
+  border: 1px solid #f5c2c2;
+  border-radius: 6px;
+  padding: 10px 14px;
+  color: #b71c1c;
+  font-size: 0.83rem;
+}
+
+/* ---- Plot loading ---- */
+
+.plot-loading {
+  padding: 40px;
+  text-align: center;
+  color: #888;
+  font-style: italic;
+}
+
+/* ---- Summary boxes ---- */
+
+.summary-boxes {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.summary-box {
+  background: #fff;
+  border: 1px solid #dde1ea;
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.summary-box-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #888;
+}
+
+.summary-box-value {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #1a1a2e;
+  font-family: monospace;
+}
+
+.summary-box-ci {
+  font-size: 0.7rem;
+  color: #aaa;
+  font-family: monospace;
+}
+
+.summary-boxes-loading {
+  color: #888;
+  font-style: italic;
+  font-size: 0.82rem;
+  padding: 8px 0;
+}

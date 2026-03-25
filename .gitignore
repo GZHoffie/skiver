@@ -13,3 +13,7 @@ test.sh
 __pycache__
 test
 web
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/gen/
