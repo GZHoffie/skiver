@@ -22,9 +22,6 @@ jobs:
           - platform: macos-latest
             rust-target: aarch64-apple-darwin
             artifact-name: macos-arm
-          - platform: macos-13
-            rust-target: x86_64-apple-darwin
-            artifact-name: macos-intel
 
     runs-on: ${{ matrix.platform }}
 
@@ -73,6 +70,7 @@ jobs:
       - name: Copy CLI binary to Tauri sidecar location (Unix)
         if: matrix.platform != 'windows-latest'
         run: |
+          mkdir -p ui/src-tauri/binaries
           cp target/${{ matrix.rust-target }}/release/skiver \
              ui/src-tauri/binaries/skiver-${{ matrix.rust-target }}
 
@@ -80,6 +78,7 @@ jobs:
         if: matrix.platform == 'windows-latest'
         shell: pwsh
         run: |
+          New-Item -ItemType Directory -Force -Path "ui\src-tauri\binaries" | Out-Null
           Copy-Item "target\${{ matrix.rust-target }}\release\skiver.exe" `
                     "ui\src-tauri\binaries\skiver-${{ matrix.rust-target }}.exe"
 
