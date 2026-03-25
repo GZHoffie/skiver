@@ -60,12 +60,42 @@ jobs:
             libssl-dev \
             libgtk-3-dev
 
+      - name: Setup MSYS2 (Windows)
+        if: matrix.platform == 'windows-latest'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: false
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-autotools
+            mingw-w64-x86_64-zlib
+            mingw-w64-x86_64-bzip2
+            mingw-w64-x86_64-xz
+            mingw-w64-x86_64-pkg-config
+
+      - name: Add MinGW64 to PATH (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: echo "C:\msys64\mingw64\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      - name: Install Rust GNU target (Windows)
+        if: matrix.platform == 'windows-latest'
+        run: rustup target add x86_64-pc-windows-gnu
+
       - name: Install frontend dependencies
         working-directory: ui
         run: npm ci
 
-      - name: Build CLI sidecar binary
+      - name: Build CLI sidecar binary (Unix)
+        if: matrix.platform != 'windows-latest'
         run: cargo build --release --target ${{ matrix.rust-target }}
+
+      - name: Build CLI sidecar binary (Windows)
+        if: matrix.platform == 'windows-latest'
+        env:
+          RUSTFLAGS: "-C target-feature=+crt-static"
+        run: cargo build --release --target x86_64-pc-windows-gnu
 
       - name: Copy CLI binary to Tauri sidecar location (Unix)
         if: matrix.platform != 'windows-latest'
@@ -79,7 +109,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path "ui\src-tauri\binaries" | Out-Null
-          Copy-Item "target\${{ matrix.rust-target }}\release\skiver.exe" `
+          Copy-Item "target\x86_64-pc-windows-gnu\release\skiver.exe" `
                     "ui\src-tauri\binaries\skiver-${{ matrix.rust-target }}.exe"
 
       - name: Build Tauri app
