@@ -1,7 +1,8 @@
 use simple_logger::SimpleLogger;
 use log::{info, warn};
 use needletail::parse_fastx_file;
-use rust_htslib::{bam, bam::Read as BamRead}; // Added rust-htslib for BAM/SAM support
+#[cfg(feature = "bam")]
+use rust_htslib::{bam, bam::Read as BamRead};
 use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 use crate::{seeding::*, types::*};
@@ -104,6 +105,7 @@ impl KmerSet {
         trim_back: usize,
     ) {
         // Handle SAM/BAM files
+        #[cfg(feature = "bam")]
         if seq_file.ends_with(".bam") || seq_file.ends_with(".sam") {
             match bam::Reader::from_path(seq_file) {
                 Ok(mut reader) => {
@@ -122,9 +124,15 @@ impl KmerSet {
                 }
                 Err(e) => warn!("{} is not a valid BAM/SAM file (Error: {}); skipping.", seq_file, e),
             }
+            return;
+        }
+        #[cfg(not(feature = "bam"))]
+        if seq_file.ends_with(".bam") || seq_file.ends_with(".sam") {
+            warn!("BAM/SAM support is not enabled in this build; skipping {}.", seq_file);
+            return;
         }
         // Fallback to Fastx parser for FASTA/FASTQ
-        else {
+        {
             match parse_fastx_file(seq_file) {
                 Ok(mut reader) => {
                     while let Some(record) = reader.next() {
@@ -170,6 +178,7 @@ impl KmerSet {
         }
 
         // Handle SAM/BAM files
+        #[cfg(feature = "bam")]
         if seq_file.ends_with(".bam") || seq_file.ends_with(".sam") {
             match bam::Reader::from_path(seq_file) {
                 Ok(mut reader) => {
@@ -200,9 +209,15 @@ impl KmerSet {
                 }
                 Err(e) => warn!("{} is not a valid BAM/SAM file (Error: {}); skipping.", seq_file, e),
             }
+            return (matched_kmers, total_kmers);
+        }
+        #[cfg(not(feature = "bam"))]
+        if seq_file.ends_with(".bam") || seq_file.ends_with(".sam") {
+            warn!("BAM/SAM support is not enabled in this build; skipping {}.", seq_file);
+            return (matched_kmers, total_kmers);
         }
         // Fallback to Fastx parser for FASTA/FASTQ
-        else {
+        {
             match parse_fastx_file(seq_file) {
                 Ok(mut reader) => {
                     while let Some(record) = reader.next() {
