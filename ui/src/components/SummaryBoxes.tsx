@@ -19,11 +19,6 @@ interface Props {
   errorRatePath: string;
 }
 
-function fmt(v: number, digits = 4): string {
-  if (v === undefined || v === null || isNaN(v)) return "—";
-  return v.toPrecision(digits);
-}
-
 function fmtPct(v: number, digits = 4): string {
   if (v === undefined || v === null || isNaN(v)) return "—";
   return (v * 100).toPrecision(digits) + "%";
