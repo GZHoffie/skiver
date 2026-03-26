@@ -41,7 +41,7 @@ export function FileSelector({ files, onChange, disabled, error }: Props) {
           onChange={(e) => setPattern(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && addPattern()}
           disabled={disabled}
-          style={{ flex: 1, fontSize: "13px" }}
+          style={{ flex: 1 }}
         />
         <button onClick={addPattern} disabled={disabled || !pattern.trim()}>Add</button>
         <button onClick={pick} disabled={disabled}>Browse…</button>

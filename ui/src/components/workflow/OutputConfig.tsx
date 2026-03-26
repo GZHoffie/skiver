@@ -29,10 +29,18 @@ export function OutputConfig({
       <h3>Output</h3>
       <div className="field-row">
         <label>Directory</label>
+        <input
+          type="text"
+          value={outputDir}
+          onChange={(e) => onDirChange(e.target.value)}
+          disabled={disabled}
+          placeholder="Output directory…"
+          className={dirError ? "error" : undefined}
+          style={{ flex: 1 }}
+        />
         <button onClick={pick} disabled={disabled}>
           Browse…
         </button>
-        <span className={`path-display${dirError ? " error" : ""}`}>{outputDir || "Not selected"}</span>
       </div>
       <div className="field-row">
         <label>Prefix</label>

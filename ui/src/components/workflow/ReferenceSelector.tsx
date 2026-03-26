@@ -27,7 +27,7 @@ export function ReferenceSelector({ reference, onChange, disabled }: Props) {
           placeholder="Path or glob pattern…"
           onChange={(e) => onChange(e.target.value || null)}
           disabled={disabled}
-          style={{ flex: 1, fontSize: "13px" }}
+          style={{ flex: 1 }}
         />
         <button onClick={pick} disabled={disabled}>Browse…</button>
         {reference && (

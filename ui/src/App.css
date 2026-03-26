@@ -67,7 +67,7 @@
   --yellow-text: #92400e;
 
   font-family: var(--font-ui);
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1.5;
   color: var(--text-primary);
   background-color: var(--bg);
@@ -102,7 +102,7 @@
 }
 
 .app-header h1 {
-  font-size: 1.15rem;
+  font-size: 1.3rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -136,7 +136,7 @@
   background: transparent;
   color: rgba(255, 255, 255, 0.5);
   cursor: pointer;
-  font-size: 1rem;
+  font-size: 1.2rem;
   font-weight: 500;
   font-family: var(--font-ui);
   transition: color 0.15s, background 0.15s;
@@ -166,13 +166,13 @@
 }
 
 .plot-tab-bar button {
-  padding: 4px 12px;
+  padding: 8px 18px;
   border-radius: 0px;
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text-secondary);
   cursor: pointer;
-  font-size: 0.95rem;
+  font-size: 1rem;
   font-weight: 500;
   font-family: var(--font-ui);
   transition: all 0.15s;
@@ -193,6 +193,10 @@
 
 .plot-area {
   flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 14px 16px;
+  box-shadow: 0 1px 3px rgba(22, 25, 43, 0.05);
 }
 
 /* ---- Sections ---- */
@@ -211,7 +215,7 @@
 }
 
 .section h3 {
-  font-size: 0.72rem;
+  font-size: 1rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -220,14 +224,14 @@
 }
 
 .section h4 {
-  font-size: 0.82rem;
+  font-size: 1rem;
   font-weight: 600;
   color: var(--text-secondary);
   margin-bottom: 8px;
 }
 
 .hint {
-  font-size: 0.76rem;
+  font-size: 0.9rem;
   color: var(--text-muted);
   margin-bottom: 8px;
 }
@@ -250,7 +254,7 @@
   border: 1px solid var(--border-subtle);
   border-radius: 0px;
   padding: 5px 10px;
-  font-size: 0.8rem;
+  font-size: 0.9rem;
 }
 
 .file-name {
@@ -259,7 +263,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-family: var(--font-mono);
-  font-size: 0.78rem;
+  font-size: 0.9rem;
   color: var(--text-secondary);
 }
 
@@ -268,7 +272,7 @@
   border: none;
   cursor: pointer;
   color: var(--text-muted);
-  font-size: 0.88rem;
+  font-size: 0.9rem;
   padding: 2px 5px;
   border-radius: 0px;
   box-shadow: none;
@@ -293,18 +297,17 @@
 .field-row label {
   width: 160px;
   flex-shrink: 0;
-  font-size: 0.82rem;
+  font-size: 0.9rem;
   color: var(--text-secondary);
 }
 
-.field-row input[type="number"],
-.field-row input[type="text"],
-.field-row select {
-  width: 120px;
+input[type="number"],
+input[type="text"],
+select {
   padding: 4px 8px;
   border: 1px solid var(--border);
   border-radius: 0px;
-  font-size: 0.82rem;
+  font-size: 0.9rem;
   font-family: var(--font-mono);
   background: var(--surface);
   color: var(--text-primary);
@@ -313,10 +316,16 @@
   outline: none;
 }
 
-.field-row input[type="number"]:focus,
-.field-row input[type="text"]:focus,
-.field-row select:focus {
+input[type="number"]:focus,
+input[type="text"]:focus,
+select:focus {
   border-color: var(--accent);
+}
+
+.field-row input[type="number"],
+.field-row input[type="text"],
+.field-row select {
+  width: 120px;
 }
 
 .field-row input[type="checkbox"] {
@@ -326,7 +335,7 @@
 }
 
 .path-display {
-  font-size: 0.76rem;
+  font-size: 0.9rem;
   color: var(--text-muted);
   font-family: var(--font-mono);
   overflow: hidden;
@@ -358,7 +367,7 @@ button {
   border-radius: 0px;
   border: 1px solid var(--border);
   padding: 5px 13px;
-  font-size: 0.83rem;
+  font-size: 0.9rem;
   font-family: var(--font-ui);
   font-weight: 500;
   background: var(--surface);
@@ -385,7 +394,7 @@ button:disabled {
 
 .run-btn {
   padding: 9px 28px;
-  font-size: 0.93rem;
+  font-size: 1rem;
   font-weight: 600;
   background: var(--accent-dark);
   color: var(--accent);
@@ -411,7 +420,7 @@ button:disabled {
 /* ---- Status badges ---- */
 
 .phase-badge {
-  font-size: 0.86rem;
+  font-size: 1rem;
   padding: 3px 10px;
   border-radius: 0px;
   font-weight: 600;
@@ -445,7 +454,7 @@ button:disabled {
   border-radius: 0px;
   padding: 12px 14px;
   font-family: var(--font-mono);
-  font-size: 0.73rem;
+  font-size: 0.9rem;
   overflow-y: visible;
   line-height: 1.65;
   border: 1px solid rgba(255, 255, 255, 0.06);
@@ -473,7 +482,7 @@ button:disabled {
   border-radius: 0px;
   padding: 10px 14px;
   color: var(--red);
-  font-size: 0.82rem;
+  font-size: 0.9rem;
 }
 
 /* ---- Plot loading ---- */
@@ -483,14 +492,14 @@ button:disabled {
   text-align: center;
   color: var(--text-muted);
   font-style: italic;
-  font-size: 0.85rem;
+  font-size: 0.9rem;
 }
 
 /* ---- Summary boxes ---- */
 
 .summary-boxes {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 8px;
   margin-bottom: 4px;
 }
@@ -507,7 +516,7 @@ button:disabled {
 }
 
 .summary-box-label {
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.07em;
@@ -523,7 +532,7 @@ button:disabled {
 }
 
 .summary-box-ci {
-  font-size: 0.82rem;
+  font-size: 0.9rem;
   color: var(--text-muted);
   font-family: var(--font-mono);
 }
@@ -531,6 +540,6 @@ button:disabled {
 .summary-boxes-loading {
   color: var(--text-muted);
   font-style: italic;
-  font-size: 0.95rem;
+  font-size: 1rem;
   padding: 8px 0;
 }

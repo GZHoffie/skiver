@@ -87,22 +87,7 @@ export function SummaryBoxes({ errorRatePath }: Props) {
         ci={transformCi(r["effective_error_rate_5-95th_percentile"], (v) => fmtPct(v))}
       />
       <Box
-        label="lambda"
-        value={fmt(r.lambda)}
-        ci={r["lambda_5-95th_percentile"]}
-      />
-      <Box
-        label="beta"
-        value={fmt(r.beta)}
-        ci={r["beta_5-95th_percentile"]}
-      />
-      <Box
-        label="Median key coverage"
-        value={fmtCoverage(r.key_median_coverage)}
-        ci={transformCi(r["key_coverage_5-95th_percentile"], fmtCoverage)}
-      />
-      <Box
-        label="True median coverage"
+        label="Median coverage"
         value={fmtCoverage(r.true_median_coverage)}
         ci={transformCi(r["true_coverage_5-95th_percentile"], fmtCoverage)}
       />
