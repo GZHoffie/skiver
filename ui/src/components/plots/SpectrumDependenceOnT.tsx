@@ -116,25 +116,25 @@ export function SpectrumDependenceOnT({ depTPath }: Props) {
     };
   });
 
+  const leftYMax = Math.max(...types.flatMap((type) => typeProportions[type]));
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const layout: any = {
-    xaxis:  { title: { text: "<i>t</i>", font: { size: 12 } }, domain: [0, 0.45], anchor: "y"  },
-    yaxis:  {                                domain: [0, 1],    anchor: "x"  },
-    xaxis2: { title: { text: "<i>t</i>", font: { size: 12 } }, domain: [0.55, 1], anchor: "y2" },
-    yaxis2: {                                domain: [0, 1],    anchor: "x2" },
+    xaxis:  { title: { text: "<i>t</i>", font: { size: 14 } }, domain: [0, 0.45], anchor: "y"  },
+    yaxis:  { title: { text: "Proportion", font: { size: 14 } }, domain: [0, 1], anchor: "x", range: [0, leftYMax] },
+    xaxis2: { title: { text: "<i>t</i>", font: { size: 14 } }, domain: [0.55, 1], anchor: "y2" },
+    yaxis2: { title: { text: "Proportion", font: { size: 14 } }, domain: [0, 1], anchor: "x2", range: [0, leftYMax] },
     legend: {
-      x: 0, y: 1.02, xanchor: "left", yanchor: "bottom", orientation: "h",
+      x: 0, y: 1.02, xanchor: "left", yanchor: "bottom", orientation: "h", font: { size: 14 },
     },
     legend2: {
-      x: 1.02, y: 1.0, xanchor: "left", yanchor: "top",
+      x: 1.02, y: 1.0, xanchor: "left", yanchor: "top", font: { size: 14 },
     },
     annotations: [
-      { text: "Error type composition", xref: "paper", yref: "paper", x: 0.22, y: 1.18, showarrow: false, xanchor: "center", font: { size: 15 } },
-      { text: "Individual operations",  xref: "paper", yref: "paper", x: 0.78, y: 1.18, showarrow: false, xanchor: "center", font: { size: 15 } },
-      { text: "Proportion",             xref: "paper", yref: "paper", x: -0.07, y: 0.5, showarrow: false, textangle: -90, font: { size: 12 } },
-      { text: "Proportion",             xref: "paper", yref: "paper", x: 0.49,  y: 0.5, showarrow: false, textangle: -90, font: { size: 12 } },
+      { text: "Error type composition", xref: "paper", yref: "paper", x: 0.22, y: 1.18, showarrow: false, xanchor: "center", font: { size: 16 } },
+      { text: "Individual operations",  xref: "paper", yref: "paper", x: 0.78, y: 1.18, showarrow: false, xanchor: "center", font: { size: 16 } },
     ],
-    font: { family: "DejaVu Sans" },
+    font: { family: "DejaVu Sans", size: 13 },
     hoverlabel: { font: { family: "DejaVu Sans" } },
     margin: { t: 90, l: 80, r: 160, b: 50 },
   };
@@ -144,7 +144,7 @@ export function SpectrumDependenceOnT({ depTPath }: Props) {
       data={[...leftTraces, ...rightTraces]}
       layout={layout}
       useResizeHandler
-      style={{ width: "100%", height: "460px" }}
+      style={{ width: "100%", height: "510px" }}
     />
   );
 }

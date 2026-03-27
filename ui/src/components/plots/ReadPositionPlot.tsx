@@ -125,20 +125,19 @@ export function ReadPositionPlot({ readPositionPath }: Props) {
   const layout: any = {
     // top-left: from-start error rate
     xaxis:  { title: "",         domain: [0, 0.45],    anchor: "y",  showticklabels: false, range: xRange },
-    yaxis:  {                    domain: [0.35, 1],    anchor: "x"  },
-    xaxis2: { title: { text: "Position" }, domain: [0, 0.45],    anchor: "y2", range: xRange },
-    yaxis2: {                              domain: [0, 0.3],     anchor: "x2" },
+    yaxis:  { title: { text: "Error rate", font: { size: 14 } }, domain: [0.35, 1], anchor: "x"  },
+    xaxis2: { title: { text: "Position", font: { size: 14 } }, domain: [0, 0.45], anchor: "y2", range: xRange },
+    yaxis2: { title: { text: "# bases used for estimation", font: { size: 14 } }, domain: [0, 0.3], anchor: "x2" },
     xaxis3: { title: "",                   domain: [0.55, 1],    anchor: "y3", showticklabels: false, range: xRange },
     yaxis3: {                              domain: [0.35, 1],    anchor: "x3" },
-    xaxis4: { title: { text: "Position" }, domain: [0.55, 1],    anchor: "y4", range: xRange },
+    xaxis4: { title: { text: "Position", font: { size: 14 } }, domain: [0.55, 1], anchor: "y4", range: xRange },
     yaxis4: {                    domain: [0, 0.3],     anchor: "x4" },
+    legend: { font: { size: 14 } },
     annotations: [
-      { text: "From start of read", xref: "paper", yref: "paper", x: 0.15,  y: 1.07, showarrow: false, font: { size: 15 } },
-      { text: "From end of read",   xref: "paper", yref: "paper", x: 0.85,  y: 1.07, showarrow: false, font: { size: 15 } },
-      { text: "Error rate",         xref: "paper", yref: "paper", x: -0.07, y: 0.75, showarrow: false, textangle: -90, font: { size: 12 } },
-      { text: "# bases used for estimation", xref: "paper", yref: "paper", x: -0.07, y: -0.05, showarrow: false, textangle: -90, font: { size: 12 } },
+      { text: "From start of read", xref: "paper", yref: "paper", x: 0.15,  y: 1.07, showarrow: false, font: { size: 16 } },
+      { text: "From end of read",   xref: "paper", yref: "paper", x: 0.85,  y: 1.07, showarrow: false, font: { size: 16 } },
     ],
-    font: { family: "DejaVu Sans" },
+    font: { family: "DejaVu Sans", size: 13 },
     hoverlabel: { font: { family: "DejaVu Sans" } },
     margin: { t: 50, l: 80, r: 20, b: 50 },
   };

@@ -192,7 +192,6 @@
 }
 
 .plot-area {
-  flex: 1;
   background: var(--surface);
   border: 1px solid var(--border);
   padding: 14px 16px;
@@ -285,6 +284,58 @@
   background: var(--red-bg);
 }
 
+/* ---- Info tooltip ---- */
+
+.info-icon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: help;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 700;
+  font-style: normal;
+  text-transform: none;
+  font-family: var(--font-mono);
+  margin-left: 6px;
+  vertical-align: middle;
+  flex-shrink: 0;
+  user-select: none;
+  line-height: 1;
+}
+
+.info-tooltip {
+  visibility: hidden;
+  opacity: 0;
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--accent-dark);
+  color: #e2e8f0;
+  font-size: 0.8rem;
+  font-weight: 400;
+  font-family: var(--font-ui);
+  line-height: 1.45;
+  padding: 7px 10px;
+  width: 240px;
+  white-space: normal;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  z-index: 100;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+
+.info-icon:hover .info-tooltip {
+  visibility: visible;
+  opacity: 1;
+}
+
 /* ---- Fields ---- */
 
 .field-row {
@@ -295,7 +346,7 @@
 }
 
 .field-row label {
-  width: 160px;
+  width: 280px;
   flex-shrink: 0;
   font-size: 0.9rem;
   color: var(--text-secondary);
@@ -424,7 +475,7 @@ button:disabled {
   padding: 3px 10px;
   border-radius: 0px;
   font-weight: 600;
-  font-family: var(--font-ui);
+  font-family: var(--font-mono);
   letter-spacing: 0.03em;
 }
 

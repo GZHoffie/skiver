@@ -72,17 +72,14 @@ export function SBS96Plot({ spectrumPath }: Props) {
     barmode: "group",
     xaxis: {
       tickangle: -90,
-      tickfont: { size: 9 },
-      title: { text: "Trinucleotide context" },
+      tickfont: { size: 13 },
+      title: { text: "Trinucleotide context", font: { size: 14 } },
     },
-    yaxis: {},
-    legend: { orientation: "h", y: 1.1 },
-    font: { family: "DejaVu Sans" },
+    yaxis: { title: { text: "Count", font: { size: 14 } } },
+    legend: { orientation: "h", y: 1.1, font: { size: 14 } },
+    font: { family: "DejaVu Sans", size: 13 },
     hoverlabel: { font: { family: "DejaVu Sans" } },
     margin: { t: 60, b: 120, l: 80, r: 20 },
-    annotations: [
-      { text: "Count", xref: "paper", yref: "paper", x: -0.06, y: 0.5, showarrow: false, textangle: -90, font: { size: 12 } },
-    ],
   };
 
   return (

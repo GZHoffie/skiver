@@ -24,7 +24,7 @@ export function ReferenceSelector({ reference, onChange, disabled }: Props) {
         <input
           type="text"
           value={reference ?? ""}
-          placeholder="Path or glob pattern…"
+          placeholder="Path or glob pattern"
           onChange={(e) => onChange(e.target.value || null)}
           disabled={disabled}
           style={{ flex: 1 }}

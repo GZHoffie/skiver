@@ -111,14 +111,12 @@ export function CoverageHistogram({ kvmerPath, errorRatePath }: Props) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const layout: any = {
     barmode: "overlay",
-    xaxis: { title: { text: "Estimated true coverage" } },
-    yaxis: { type: "log" },
-    font: { family: "DejaVu Sans" },
+    xaxis: { title: { text: "Estimated true coverage", font: { size: 14 } } },
+    yaxis: { title: { text: "Count", font: { size: 14 } }, type: "log" },
+    legend: { font: { size: 14 } },
+    font: { family: "DejaVu Sans", size: 13 },
     hoverlabel: { font: { family: "DejaVu Sans" } },
     margin: { t: 30, l: 80, r: 20, b: 50 },
-    annotations: [
-      { text: "Count", xref: "paper", yref: "paper", x: -0.06, y: 0.5, showarrow: false, textangle: -90, font: { size: 14 } },
-    ],
   };
 
   return (

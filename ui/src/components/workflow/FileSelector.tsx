@@ -37,7 +37,7 @@ export function FileSelector({ files, onChange, disabled, error }: Props) {
         <input
           type="text"
           value={pattern}
-          placeholder="Path or glob pattern…"
+          placeholder="Path or glob pattern"
           onChange={(e) => setPattern(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && addPattern()}
           disabled={disabled}

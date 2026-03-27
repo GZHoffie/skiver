@@ -75,34 +75,31 @@ export function HazardSurvivalPlot({ hazardPath, errorRatePath }: Props) {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const layout: any = {
-    xaxis:  { title: { text: "<i>t</i>" }, domain: [0, 0.44],  anchor: "y"  },
-    yaxis:  {                       domain: [0, 1],     anchor: "x"  },
-    xaxis2: { title: { text: "<i>t</i>" }, domain: [0.56, 1],  anchor: "y2" },
-    yaxis2: {                       domain: [0, 1],     anchor: "x2" },
+    xaxis:  { title: { text: "<i>t</i>", font: { size: 14 } }, domain: [0, 0.44],  anchor: "y"  },
+    yaxis:  { title: { text: "Hazard rate <i>h</i>(<i>t</i>)", font: { size: 14 } }, domain: [0, 0.75], anchor: "x"  },
+    xaxis2: { title: { text: "<i>t</i>", font: { size: 14 } }, domain: [0.56, 1],  anchor: "y2" },
+    yaxis2: { title: { text: "Survival rate <i>S</i>(<i>t</i>)", font: { size: 14 } }, domain: [0, 0.75], anchor: "x2" },
     legend: {
-      x: 0, y: 1.02, xanchor: "left", yanchor: "bottom",
-      orientation: "h",
+      x: 0, y: 0.75, xanchor: "left", yanchor: "bottom",
+      font: { size: 14 },
     },
     legend2: {
-      x: 0.56, y: 1.02, xanchor: "left", yanchor: "bottom",
-      orientation: "h",
+      x: 0.56, y: 0.75, xanchor: "left", yanchor: "bottom",
+      orientation: "h", font: { size: 14 },
     },
-    font: { family: "DejaVu Sans" },
+    font: { family: "DejaVu Sans", size: 13 },
     hoverlabel: { font: { family: "DejaVu Sans" } },
-    margin: { t: 110, l: 80, r: 20, b: 50 },
+    margin: { t: 30, l: 90, r: 30, b: 70 },
     annotations: [
       // subplot titles
-      { text: "Hazard rate",   xref: "paper", yref: "paper", x: 0.22, y: 1.26, showarrow: false, xanchor: "center", font: { size: 15 } },
-      { text: "Error rate at each position",
-        xref: "paper", yref: "paper", x: 0.22, y: 1.19, showarrow: false, xanchor: "center",
-        font: { size: 11, color: "#9099b0" } },
-      { text: "Survival rate", xref: "paper", yref: "paper", x: 0.78, y: 1.26, showarrow: false, xanchor: "center", font: { size: 15 } },
+      { text: "Hazard rate",   xref: "paper", yref: "paper", x: 0.22, y: 1, showarrow: false, xanchor: "center", font: { size: 16 } },
+      { text: "Probability of next base being erroneous given previous <i>t</i> bases are correct",
+        xref: "paper", yref: "paper", x: 0.22, y: 0.95, showarrow: false, xanchor: "center",
+        font: { size: 12, color: "#9099b0" } },
+      { text: "Survival rate", xref: "paper", yref: "paper", x: 0.78, y: 1, showarrow: false, xanchor: "center", font: { size: 16 } },
       { text: "Probability that a <i>t</i>-mer is free of sequencing errors",
-        xref: "paper", yref: "paper", x: 0.78, y: 1.19, showarrow: false, xanchor: "center",
-        font: { size: 11, color: "#9099b0" } },
-      // y-axis titles (rotated annotations)
-      { text: "Hazard rate <i>h</i>(<i>t</i>)", xref: "paper", yref: "paper", x: -0.07, y: 0.5, showarrow: false, textangle: -90, font: { size: 12 } },
-      { text: "Survival rate <i>S</i>(<i>t</i>)",    xref: "paper", yref: "paper", x: 0.52,  y: 0.5, showarrow: false, textangle: -90, font: { size: 12 } },
+        xref: "paper", yref: "paper", x: 0.78, y: 0.95, showarrow: false, xanchor: "center",
+        font: { size: 12, color: "#9099b0" } },
     ],
   };
 
@@ -111,7 +108,7 @@ export function HazardSurvivalPlot({ hazardPath, errorRatePath }: Props) {
       data={[...hazardTraces, ...survivalTraces]}
       layout={layout}
       useResizeHandler
-      style={{ width: "100%", height: "480px" }}
+      style={{ width: "100%", height: "550px" }}
     />
   );
 }

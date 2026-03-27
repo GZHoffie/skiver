@@ -19,7 +19,7 @@ import "./App.css";
 const DEFAULT_SKETCH: SketchParams = {
   input_files: [],
   output_path: "",
-  k: 21,
+  k: 19,
   v: 19,
   c: null,
   trim_front: 0,
@@ -30,7 +30,7 @@ const DEFAULT_SKETCH: SketchParams = {
 const DEFAULT_ANALYZE: AnalyzeParams = {
   kvmer_path: "",
   output_prefix: "",
-  k: 21,
+  k: 19,
   v: 19,
   lower_bound: null,
   forward_only: false,
@@ -98,8 +98,8 @@ export default function App() {
 
   const phaseLabel: Record<string, string> = {
     idle: "",
-    sketching: "Running skiver sketch…",
-    analyzing: "Running skiver analyze…",
+    sketching: "Running skiver sketch",
+    analyzing: "Running skiver analyze",
     done: "Done",
     error: "Error",
   };
@@ -138,7 +138,7 @@ export default function App() {
           />
           <ReferenceSelector
             reference={analyzeParams.reference}
-            onChange={(ref) => setAnalyzeParams((p) => ({ ...p, reference: ref }))}
+            onChange={(ref) => setAnalyzeParams((p) => ({ ...p, reference: ref, use_all: ref !== null ? true : p.use_all }))}
             disabled={busy}
           />
           <OutputConfig

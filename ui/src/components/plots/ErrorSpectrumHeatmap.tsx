@@ -106,6 +106,7 @@ export function ErrorSpectrumHeatmap({ spectrumPath, errorRatePath }: Props) {
     x: BASES,
     y: BASES,
     colorscale: COLORSCALE,
+    zmin: 0,
     xgap: 6,
     ygap: 6,
     showscale: true,
@@ -116,12 +117,12 @@ export function ErrorSpectrumHeatmap({ spectrumPath, errorRatePath }: Props) {
       yanchor: "middle",
       len: colorbarLen,
       thickness: 12,
-      tickfont: { size: 12 },
+      tickfont: { size: 13 },
       outlinewidth: 0,
     },
     text: z.map((row) => row.map((v) => (v === null ? "" : v.toFixed(3)))) as unknown as string[],
     texttemplate: "%{text}",
-    textfont: { size: 12 },
+    textfont: { size: 13 },
     xaxis: `x${axis}`,
     yaxis: `y${axis}`,
     name: title,
@@ -160,23 +161,19 @@ export function ErrorSpectrumHeatmap({ spectrumPath, errorRatePath }: Props) {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const layout: any = {
-    xaxis:  { title: { text: "Observed base", font: { size: 12 } }, domain: heatX, anchor: "y",  ...gridOff },
-    yaxis:  {                                   domain: topY,  anchor: "x",  ...gridOff },
-    xaxis2: { title: { text: "Error type" },    domain: barX,  anchor: "y2" },
-    yaxis2: {                                   domain: topY,  anchor: "x2" },
-    xaxis3: { title: { text: "Observed base", font: { size: 12 } }, domain: heatX, anchor: "y3", ...gridOff },
-    yaxis3: {                                   domain: bottomY, anchor: "x3", ...gridOff },
-    xaxis4: { title: { text: "Error type" },    domain: barX,  anchor: "y4" },
-    yaxis4: {                                   domain: bottomY, anchor: "x4" },
+    xaxis:  { title: { text: "Observed base", font: { size: 14 } }, domain: heatX, anchor: "y",  ...gridOff },
+    yaxis:  { title: { text: "Original base", font: { size: 14 } }, domain: topY,    anchor: "x",  autorange: "reversed", ...gridOff },
+    xaxis2: { title: { text: "Error type", font: { size: 14 } },   domain: barX,    anchor: "y2" },
+    yaxis2: { title: { text: "Error rate (%)", font: { size: 14 } }, domain: topY,   anchor: "x2" },
+    xaxis3: { title: { text: "Observed base", font: { size: 14 } }, domain: heatX,  anchor: "y3", ...gridOff },
+    yaxis3: { title: { text: "Original base", font: { size: 14 } }, domain: bottomY, anchor: "x3", autorange: "reversed", ...gridOff },
+    xaxis4: { title: { text: "Error type", font: { size: 14 } },   domain: barX,    anchor: "y4" },
+    yaxis4: { title: { text: "Error rate (%)", font: { size: 14 } }, domain: bottomY, anchor: "x4" },
     annotations: [
-      { text: "Estimation of error rates (%) using both forward and reverse strands of the reads",   xref: "paper", yref: "paper", x: 0.5,   y: 1.04, showarrow: false, xanchor: "center", font: { size: 15 } },
-      { text: "Estimation of error rates (%) using only forward strand of the reads", xref: "paper", yref: "paper", x: 0.5,   y: 0.45, showarrow: false, xanchor: "center", font: { size: 15 } },
-      { text: "Original base",           xref: "paper", yref: "paper", x: -0.05, y: 0.85,  showarrow: false, textangle: -90, font: { size: 12 } },
-      { text: "Error rate (%)",           xref: "paper", yref: "paper", x: 0.50,  y: 0.85,  showarrow: false, textangle: -90, font: { size: 12 } },
-      { text: "Original base",           xref: "paper", yref: "paper", x: -0.05, y: 0.15,  showarrow: false, textangle: -90, font: { size: 12 } },
-      { text: "Error rate (%)",           xref: "paper", yref: "paper", x: 0.50,  y: 0.15,  showarrow: false, textangle: -90, font: { size: 12 } },
+      { text: "Estimation of error rates (%) using both forward and reverse strands of the reads",   xref: "paper", yref: "paper", x: 0.5,   y: 1.04, showarrow: false, xanchor: "center", font: { size: 16 } },
+      { text: "Estimation of error rates (%) using only forward strand of the reads", xref: "paper", yref: "paper", x: 0.5,   y: 0.45, showarrow: false, xanchor: "center", font: { size: 16 } },
     ],
-    font: { family: "DejaVu Sans" },
+    font: { family: "DejaVu Sans", size: 13 },
     hoverlabel: { font: { family: "DejaVu Sans" } },
     margin: { t: 60, l: 80, r: 20, b: 50 },
     showlegend: false,
@@ -187,7 +184,7 @@ export function ErrorSpectrumHeatmap({ spectrumPath, errorRatePath }: Props) {
       data={traces}
       layout={layout}
       useResizeHandler
-      style={{ width: "100%", height: "820px" }}
+      style={{ width: "100%", height: "850px" }}
     />
   );
 }

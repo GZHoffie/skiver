@@ -34,7 +34,7 @@ export function OutputConfig({
           value={outputDir}
           onChange={(e) => onDirChange(e.target.value)}
           disabled={disabled}
-          placeholder="Output directory…"
+          placeholder="Output directory"
           className={dirError ? "error" : undefined}
           style={{ flex: 1 }}
         />
