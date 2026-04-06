@@ -92,7 +92,7 @@ export function SummaryBoxes({ errorRatePath }: Props) {
         label="Mean hazard rate"
         value={fmtPct(r.mean_hazard_rate)}
         ci={transformCi(r["mean_hazard_rate_5-95th_percentile"], (v) => fmtPct(v))}
-        description={<>The mean hazard rate: 1 minus the geometric mean of (1 &minus; h(t)) over the expected lifetime of an error-free run.</>}
+        description={<>The mean hazard rate. This value can be used to estimate the chance of a <i>k</i>-mer being free of sequencing error by raising this number to the power of <i>k</i>.</>}
       />
       <Box
         label="Median coverage"

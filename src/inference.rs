@@ -424,7 +424,7 @@ impl ErrorAnalyzer {
         if n == 0 {
             return 0.;
         }
-        let mean = hazard_ratios.iter().sum::<f32>() / n as f32;
+        let mean = hazard_ratios.iter().sum::<f32>() / hazard_ratios.len() as f32;
         mean
     }
 
@@ -929,7 +929,7 @@ impl ErrorAnalyzer {
             writeln!(writer, "t,num_candidates,num_survival,hazard_ratio,5th_percentile,95th_percentile").expect("Could not write to hazard ratio output file.");
             for v in 0..hazard_ratio.len() {
                 writeln!(writer, "{},{},{},{:.6},{:.6},{:.6}",
-                    v + 1 + self.args.k as usize,
+                    v + 1 + self.args.ignore_smallest_t + self.args.k as usize,
                     x_sum[v],
                     y_sum[v],
                     hazard_ratio[v],
