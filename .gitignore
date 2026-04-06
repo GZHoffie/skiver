@@ -12,3 +12,9 @@ test.sh
 .vscode
 __pycache__
 test
+web
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/gen/
+ui/src-tauri/binaries/skiver-*

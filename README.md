@@ -17,7 +17,7 @@ Skiver is a tool that aims to perform quality control for a set of reads, estima
 Simply download the executable from the latest release, via the following
 
 ```bash
-wget https://github.com/GZHoffie/skiver/releases/download/v0.2.0/skiver
+wget https://github.com/GZHoffie/skiver/releases/download/v0.2.1/skiver
 chmod +x ./skiver
 ./skiver
 ```
@@ -59,6 +59,17 @@ For the full set of available options, use the help function,
 skiver sketch -h
 skiver analyze -h
 ```
+
+## `skiver` App
+
+We provide an all-in-one app for analyzing and visualizing the information in sequencing datasets.
+
+<p align="center">
+  <img src="figures/skiver-app/skiver_app_main_menu.png" width="90%" />
+  <img src="figures/skiver-app/skiver_app_analysis.png" width="90%" />
+</p>
+
+Download link: [Windows]() | [Linux](https://github.com/GZHoffie/skiver/actions/runs/23633155650/artifacts/6138594346).
 
 ### Interpreting the results
 

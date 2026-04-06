@@ -38,7 +38,7 @@ pub struct ErrorSpectrum {
 
     // estimated error rates
     pub per_base_error_rate: (f32, (f32, f32)),
-    pub effective_error_rate: (f32, (f32, f32)),
+    pub mean_hazard_rate: (f32, (f32, f32)),
 
     // coverage information
     pub key_coverage: (f32, (f32, f32)),
@@ -424,7 +424,7 @@ impl ErrorAnalyzer {
         if n == 0 {
             return 0.;
         }
-        let mean = hazard_ratios.iter().sum::<f32>() / n as f32;
+        let mean = hazard_ratios.iter().sum::<f32>() / hazard_ratios.len() as f32;
         mean
     }
 
@@ -439,22 +439,18 @@ impl ErrorAnalyzer {
     }
 
     /**
-     * Estimate 1/E[T], where T~DiscreteWeibull(lambda, beta)
-     * E[T] = sum_{t=1}^{\infty} P(T >= t) = sum_{t=1}^{\infty} exp(-lambda * t^beta)
-     * approximate the sum until the terms are small enough
+     * Estimate the mean hazard rate: 1 - geometric_mean(1 - h(t))
      */
-    fn estimate_effective_error_rate(&self, lambda: f32, beta: f32) -> f32 {
-        let mut expected_t = 0.0;
-        let epsilon: f32 = 1e-6;
-        let max_iterations: usize = 10000;
-        for t in 1..max_iterations {
-            let survival_prob = (- lambda * (t as f32).powf(beta)).exp();
-            if survival_prob < epsilon {
-                break;
-            }
-            expected_t += survival_prob;
+    fn estimate_mean_hazard_rate(&self, hazard_ratios: &Vec<f32>) -> f32 {
+        let n = hazard_ratios.len();
+        if n == 0 {
+            return 0.;
         }
-        1.0 / expected_t
+        let log_survival_product: f32 = hazard_ratios.iter()
+            .map(|&hr| (1. - hr).clamp(EPSILON, 1.0).ln())
+            .sum();
+        let mean_hazard_rate = 1. - (log_survival_product / n as f32).exp();
+        mean_hazard_rate
     }
 
 
@@ -508,12 +504,14 @@ impl ErrorAnalyzer {
         let mut prev_lambda = f32::INFINITY;
         let mut prev_beta = f32::INFINITY;
 
-        let v_max = stats.v - self.args.ignore_last_hazard_ratios as u8;
+        let v_min = 1 + self.args.ignore_smallest_t as u8;
+        let v_max = stats.v - self.args.ignore_largest_t as u8;
 
         for iter in 0..max_iter {
             let indices: Vec<usize> = (0..n_keys).filter(|&i| active[i]).collect();
             if indices.is_empty() { break; }
 
+            // the hazard rates are estimated using v=v_min,...,v_max
             let (lambda, beta, _, _, _) = self.estimate_hazard_ratio(stats, &indices);
 
             if (lambda - prev_lambda).abs() < convergence_tol && (beta - prev_beta).abs() < convergence_tol {
@@ -523,7 +521,8 @@ impl ErrorAnalyzer {
             prev_lambda = lambda;
             prev_beta = beta;
 
-            for v in 1..=v_max {
+            // exclude outliers for all 1<= v <= stats.v
+            for v in 1..=stats.v {
                 // t is the time coordinate used when fitting: t = (v-1) + k
                 let t = (v - 1) as f64 + self.args.k as f64;
                 let t_beta = t.powf(beta as f64);
@@ -640,7 +639,10 @@ impl ErrorAnalyzer {
 
         // record hazard ratios for each v
         let mut hazard_ratio_list: Vec<Vec<f32>> = Vec::new();
-        for _v in 1..=(stats.v - self.args.ignore_last_hazard_ratios as u8) {
+
+        let v_min = 1 + self.args.ignore_smallest_t as u8;
+        let v_max = stats.v - self.args.ignore_largest_t as u8;
+        for _v in v_min..=v_max {
             hazard_ratio_list.push(Vec::new());
         }
 
@@ -649,7 +651,7 @@ impl ErrorAnalyzer {
 
             let mut hazard_ratios: Vec<f32> = Vec::new();
 
-            for v in 1..=(stats.v - self.args.ignore_last_hazard_ratios as u8) {
+            for v in v_min..=v_max {
                 if v - 1 == 0 {
                     x = &stats.error_summary.total_counts;
                     y = &stats.error_summary.consensus_up_to_v_counts[0];
@@ -660,14 +662,14 @@ impl ErrorAnalyzer {
 
                 let h = self.calculate_ratio(x, y, &indices_sample);
                 hazard_ratios.push(1. - h);
-                hazard_ratio_list[(v - 1) as usize].push(1. - h);
+                hazard_ratio_list[(v - v_min) as usize].push(1. - h);
             }
             // estimate the parameters of the beta distribution
             //let (alpha, beta) = self.fit_hazard_ratio_beta_distribution(&hazard_ratios, (indices.len() as f32 * self.bootstrap_sample_rate) as usize);
             let (lambda, beta) = self.fit_hazard_ratio(&hazard_ratios);
             lambda_list.push(lambda);
             beta_list.push(beta);
-            error_rate_list.push(self.estimate_effective_error_rate(lambda, beta));
+            error_rate_list.push(self.estimate_mean_hazard_rate(&hazard_ratios));
         }
 
         lambda_list.sort_by(f32::total_cmp);
@@ -703,7 +705,9 @@ impl ErrorAnalyzer {
         let mut x_sum: Vec<u32> = Vec::new();
         let mut y_sum: Vec<u32> = Vec::new();
 
-        for v in 1..=(stats.v - self.args.ignore_last_hazard_ratios as u8) {
+        let v_min = 1 + self.args.ignore_smallest_t as u8;
+        let v_max = stats.v - self.args.ignore_largest_t as u8;
+        for v in v_min..=v_max {
             if v - 1 == 0 {
                 x = &stats.error_summary.total_counts;
                 y = &stats.error_summary.consensus_up_to_v_counts[0];
@@ -909,7 +913,7 @@ impl ErrorAnalyzer {
         // estimate hazard ratio parameters
         let (lambda, beta, hazard_ratio, x_sum, y_sum) = self.estimate_hazard_ratio(stats, &indices);
         let (lambda_ci, beta_ci, hazard_ratio_ci, error_rate_ci) = self.estimate_hazard_ratio_confidence_interval(stats, &indices);
-        let effective_error_rate = self.estimate_effective_error_rate(lambda, beta);
+        let mean_hazard_rate = self.estimate_mean_hazard_rate(&hazard_ratio);
         let per_base_error_rate = 1.0 - (-lambda).exp();
         let per_base_error_rate_ci = (1.0 - (-(lambda_ci.0)).exp(), 1.0 - (-(lambda_ci.1)).exp());
 
@@ -925,7 +929,7 @@ impl ErrorAnalyzer {
             writeln!(writer, "t,num_candidates,num_survival,hazard_ratio,5th_percentile,95th_percentile").expect("Could not write to hazard ratio output file.");
             for v in 0..hazard_ratio.len() {
                 writeln!(writer, "{},{},{},{:.6},{:.6},{:.6}",
-                    v + 1 + self.args.k as usize,
+                    v + 1 + self.args.ignore_smallest_t + self.args.k as usize,
                     x_sum[v],
                     y_sum[v],
                     hazard_ratio[v],
@@ -936,7 +940,7 @@ impl ErrorAnalyzer {
 
             fs::write(format!("{}.kvmer.csv", prefix), stats.error_summary.to_csv(Some(&indices))).unwrap();
             fs::write(format!("{}.summary_error_spectrum.csv", prefix), stats.error_spectrum.to_csv(Some(&indices))).unwrap();
-            fs::write(format!("{}.summary_error_spectrum_dependence_on_t.csv", prefix), stats.error_spectrum.to_dependence_on_t_csv(Some(&indices), self.args.k as usize, self.args.ignore_last_hazard_ratios)).unwrap();
+            fs::write(format!("{}.summary_error_spectrum_dependence_on_t.csv", prefix), stats.error_spectrum.to_dependence_on_t_csv(Some(&indices), self.args.k as usize, self.args.ignore_smallest_t, self.args.ignore_largest_t)).unwrap();
             fs::write(format!("{}.summary_phred.csv", prefix), stats.phred_summary.to_csv(Some(&indices))).unwrap();
             fs::write(format!("{}.summary_read_position.csv", prefix), stats.read_position_summary.to_csv(Some(&indices))).unwrap();
         }
@@ -949,7 +953,7 @@ impl ErrorAnalyzer {
             estimated_lambda: (lambda, lambda_ci),
             estimated_beta: (beta, beta_ci),
             per_base_error_rate: (per_base_error_rate, per_base_error_rate_ci),
-            effective_error_rate: (effective_error_rate, error_rate_ci),
+            mean_hazard_rate: (mean_hazard_rate, error_rate_ci),
 
             key_coverage: key_coverage,
             estimated_coverage: estimated_coverage,
@@ -971,16 +975,16 @@ pub fn spectrum_to_str(spectrum: &ErrorSpectrum, bidirectional: bool) -> String 
         panic!("The bidirectional flag does not match the spectrum data.");
     }
 
-    // per-base and effective error rate
+    // per-base error rate and mean hazard rate
     result.push_str(&format!("{:.6},{:.6}~{:.6},", spectrum.per_base_error_rate.0, (spectrum.per_base_error_rate.1).0, (spectrum.per_base_error_rate.1).1));
-    result.push_str(&format!("{:.6},{:.6}~{:.6},", spectrum.effective_error_rate.0, (spectrum.effective_error_rate.1).0, (spectrum.effective_error_rate.1).1));
+    result.push_str(&format!("{:.6},{:.6}~{:.6},", spectrum.mean_hazard_rate.0, (spectrum.mean_hazard_rate.1).0, (spectrum.mean_hazard_rate.1).1));
 
     // hazard ratio parameters a and b
     result.push_str(&format!("{:.6},{:.6}~{:.6},", spectrum.estimated_lambda.0, (spectrum.estimated_lambda.1).0, (spectrum.estimated_lambda.1).1));
     result.push_str(&format!("{:.6},{:.6}~{:.6},", spectrum.estimated_beta.0, (spectrum.estimated_beta.1).0, (spectrum.estimated_beta.1).1));
 
     // key coverage and estimated true coverage
-    result.push_str(&format!("{:.6},{:.6}~{:.6},", spectrum.key_coverage.0, (spectrum.key_coverage.1).0, (spectrum.key_coverage.1).1));
+    result.push_str(&format!("{},{}~{},", spectrum.key_coverage.0, (spectrum.key_coverage.1).0, (spectrum.key_coverage.1).1));
     result.push_str(&format!("{:.6},{:.6}~{:.6},", spectrum.estimated_coverage.0, (spectrum.estimated_coverage.1).0, (spectrum.estimated_coverage.1).1));
 
     // remove the last comma
@@ -994,7 +998,7 @@ pub fn header_str(bidirectional: bool) -> String {
     let mut result = String::new();
 
     result.push_str("per_base_error_rate,per_base_error_rate_5-95th_percentile,");
-    result.push_str("effective_error_rate,effective_error_rate_5-95th_percentile,");
+    result.push_str("mean_hazard_rate,mean_hazard_rate_5-95th_percentile,");
     result.push_str("lambda,lambda_5-95th_percentile,");
     result.push_str("beta,beta_5-95th_percentile,");
 

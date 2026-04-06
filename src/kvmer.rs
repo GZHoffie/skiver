@@ -1,6 +1,7 @@
 use log::{info, warn, error};
 use needletail::parse_fastx_file;
-use rust_htslib::{bam, bam::Read as BamRead}; // Added rust-htslib
+#[cfg(feature = "bam")]
+use rust_htslib::{bam, bam::Read as BamRead};
 use serde::{Serialize, Deserialize};
 //use rayon::prelude::*;
 
@@ -135,6 +136,7 @@ impl KVmerSet {
     ) {
         let seq_file_clone = seq_file.to_string();
 
+        #[cfg(feature = "bam")]
         if seq_file_clone.ends_with(".bam") || seq_file_clone.ends_with(".sam") {
             match bam::Reader::from_path(&seq_file_clone) {
                 Ok(mut reader) => {
@@ -159,7 +161,16 @@ impl KVmerSet {
                 }
                 Err(e) => error!("{} is not a valid BAM/SAM file (Error: {}); skipping.", seq_file_clone, e),
             }
-        } else {
+            return;
+        }
+
+        #[cfg(not(feature = "bam"))]
+        if seq_file_clone.ends_with(".bam") || seq_file_clone.ends_with(".sam") {
+            error!("BAM/SAM support is not enabled in this build; skipping {}.", seq_file_clone);
+            return;
+        }
+
+        {
             let reader = parse_fastx_file(&seq_file_clone);
             if !reader.is_ok() {
                 error!("{} is not a valid fasta/fastq file; skipping.", seq_file_clone);
