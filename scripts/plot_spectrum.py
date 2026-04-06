@@ -98,7 +98,7 @@ def plot_spectrum(skiver_spectrum_file, skiver_error_rate_file, output_file, nor
 
     if not normalize:
         rate_df = pd.read_csv(skiver_error_rate_file)
-        # [FIXME] use effective_error_rate instead? Which one is more appropriate?
+        # [FIXME] use mean_hazard_rate instead? Which one is more appropriate?
         target_sum = rate_df["per_base_error_rate"].item()
     else:
         target_sum = 1.0

@@ -10,14 +10,14 @@
 
 Skiver is a tool that aims to perform quality control for a set of reads, estimating the sequencing error rates/types, without relying on the quality scores or the need for a reference genome. It works the best for metagenomic samples where at least one genome has high coverage (>20 $\times$).
 
-## Installation of `skiver`
+## Installation
 
 ### Download executable
 
 Simply download the executable from the latest release, via the following
 
 ```bash
-wget https://github.com/GZHoffie/skiver/releases/download/v0.2.0/skiver
+wget https://github.com/GZHoffie/skiver/releases/download/v0.2.1/skiver
 chmod +x ./skiver
 ./skiver
 ```
@@ -60,14 +60,16 @@ skiver sketch -h
 skiver analyze -h
 ```
 
-## `skiver` app
+## `skiver` App
 
 We provide an all-in-one app for analyzing and visualizing the information in sequencing datasets.
 
 <p align="center">
-  <img src="figures/skiver-app/skiver_app_main_menu.png" width="48%" />
-  <img src="figures/skiver-app/skiver_app_analysis.png" width="48%" />
+  <img src="figures/skiver-app/skiver_app_main_menu.png" width="90%" />
+  <img src="figures/skiver-app/skiver_app_analysis.png" width="90%" />
 </p>
+
+Download link: [Windows]() | [Linux](https://github.com/GZHoffie/skiver/actions/runs/23633155650/artifacts/6138594346).
 
 ### Interpreting the results
 

@@ -1,2 +1,2 @@
-per_base_error_rate,per_base_error_rate_5-95th_percentile,effective_error_rate,effective_error_rate_5-95th_percentile,lambda,lambda_5-95th_percentile,beta,beta_5-95th_percentile,key_median_coverage,key_coverage_5-95th_percentile,true_median_coverage,true_coverage_5-95th_percentile
-0.105896,0.101325~0.109844,0.109199,0.107136~0.110961,0.111933,0.106834~0.116358,0.971518,0.962721~0.983801,26.000000,12.000000~38.000000,224.405106,103.571587~327.976685
+per_base_error_rate,per_base_error_rate_5-95th_percentile,mean_hazard_rate,mean_hazard_rate_5-95th_percentile,lambda,lambda_5-95th_percentile,beta,beta_5-95th_percentile,key_median_coverage,key_coverage_5-95th_percentile,true_median_coverage,true_coverage_5-95th_percentile
+0.135423,0.127745~0.142736,0.092335,0.091984~0.092741,0.145515,0.136673~0.154010,0.905112,0.891964~0.921827,31,11~47,250.847137,89.010277~380.316620

@@ -4,8 +4,8 @@ import { useCSVData } from "../hooks/useCSVData";
 interface ErrorRateRow {
   per_base_error_rate: number;
   "per_base_error_rate_5-95th_percentile": string;
-  effective_error_rate: number;
-  "effective_error_rate_5-95th_percentile": string;
+  mean_hazard_rate: number;
+  "mean_hazard_rate_5-95th_percentile": string;
   lambda: number;
   "lambda_5-95th_percentile": string;
   beta: number;
@@ -89,10 +89,10 @@ export function SummaryBoxes({ errorRatePath }: Props) {
         description={<>Probability that a random base in the read is erroneous. Note: This value is calculated by extrapolating from the hazard rate and can be sensitive to the parameters.</>}
       />
       <Box
-        label="Effective error rate"
-        value={fmtPct(r.effective_error_rate)}
-        ci={transformCi(r["effective_error_rate_5-95th_percentile"], (v) => fmtPct(v))}
-        description={<>Similar to the gap-compressed error rate. This value estimates the probability of a random base is erroneous after excluding the regions where errors are clustered together.</>}
+        label="Mean hazard rate"
+        value={fmtPct(r.mean_hazard_rate)}
+        ci={transformCi(r["mean_hazard_rate_5-95th_percentile"], (v) => fmtPct(v))}
+        description={<>The mean hazard rate: 1 minus the geometric mean of (1 &minus; h(t)) over the expected lifetime of an error-free run.</>}
       />
       <Box
         label="Median coverage"

@@ -38,7 +38,7 @@ pub struct ErrorSpectrum {
 
     // estimated error rates
     pub per_base_error_rate: (f32, (f32, f32)),
-    pub effective_error_rate: (f32, (f32, f32)),
+    pub mean_hazard_rate: (f32, (f32, f32)),
 
     // coverage information
     pub key_coverage: (f32, (f32, f32)),
@@ -439,22 +439,18 @@ impl ErrorAnalyzer {
     }
 
     /**
-     * Estimate 1/E[T], where T~DiscreteWeibull(lambda, beta)
-     * E[T] = sum_{t=1}^{\infty} P(T >= t) = sum_{t=1}^{\infty} exp(-lambda * t^beta)
-     * approximate the sum until the terms are small enough
+     * Estimate the mean hazard rate: 1 - geometric_mean(1 - h(t))
      */
-    fn estimate_effective_error_rate(&self, lambda: f32, beta: f32) -> f32 {
-        let mut expected_t = 0.0;
-        let epsilon: f32 = 1e-6;
-        let max_iterations: usize = 10000;
-        for t in 1..max_iterations {
-            let survival_prob = (- lambda * (t as f32).powf(beta)).exp();
-            if survival_prob < epsilon {
-                break;
-            }
-            expected_t += survival_prob;
+    fn estimate_mean_hazard_rate(&self, hazard_ratios: &Vec<f32>) -> f32 {
+        let n = hazard_ratios.len();
+        if n == 0 {
+            return 0.;
         }
-        1.0 / expected_t
+        let log_survival_product: f32 = hazard_ratios.iter()
+            .map(|&hr| (1. - hr).clamp(EPSILON, 1.0).ln())
+            .sum();
+        let mean_hazard_rate = 1. - (log_survival_product / n as f32).exp();
+        mean_hazard_rate
     }
 
 
@@ -673,7 +669,7 @@ impl ErrorAnalyzer {
             let (lambda, beta) = self.fit_hazard_ratio(&hazard_ratios);
             lambda_list.push(lambda);
             beta_list.push(beta);
-            error_rate_list.push(self.estimate_effective_error_rate(lambda, beta));
+            error_rate_list.push(self.estimate_mean_hazard_rate(&hazard_ratios));
         }
 
         lambda_list.sort_by(f32::total_cmp);
@@ -917,7 +913,7 @@ impl ErrorAnalyzer {
         // estimate hazard ratio parameters
         let (lambda, beta, hazard_ratio, x_sum, y_sum) = self.estimate_hazard_ratio(stats, &indices);
         let (lambda_ci, beta_ci, hazard_ratio_ci, error_rate_ci) = self.estimate_hazard_ratio_confidence_interval(stats, &indices);
-        let effective_error_rate = self.estimate_effective_error_rate(lambda, beta);
+        let mean_hazard_rate = self.estimate_mean_hazard_rate(&hazard_ratio);
         let per_base_error_rate = 1.0 - (-lambda).exp();
         let per_base_error_rate_ci = (1.0 - (-(lambda_ci.0)).exp(), 1.0 - (-(lambda_ci.1)).exp());
 
@@ -957,7 +953,7 @@ impl ErrorAnalyzer {
             estimated_lambda: (lambda, lambda_ci),
             estimated_beta: (beta, beta_ci),
             per_base_error_rate: (per_base_error_rate, per_base_error_rate_ci),
-            effective_error_rate: (effective_error_rate, error_rate_ci),
+            mean_hazard_rate: (mean_hazard_rate, error_rate_ci),
 
             key_coverage: key_coverage,
             estimated_coverage: estimated_coverage,
@@ -979,16 +975,16 @@ pub fn spectrum_to_str(spectrum: &ErrorSpectrum, bidirectional: bool) -> String 
         panic!("The bidirectional flag does not match the spectrum data.");
     }
 
-    // per-base and effective error rate
+    // per-base error rate and mean hazard rate
     result.push_str(&format!("{:.6},{:.6}~{:.6},", spectrum.per_base_error_rate.0, (spectrum.per_base_error_rate.1).0, (spectrum.per_base_error_rate.1).1));
-    result.push_str(&format!("{:.6},{:.6}~{:.6},", spectrum.effective_error_rate.0, (spectrum.effective_error_rate.1).0, (spectrum.effective_error_rate.1).1));
+    result.push_str(&format!("{:.6},{:.6}~{:.6},", spectrum.mean_hazard_rate.0, (spectrum.mean_hazard_rate.1).0, (spectrum.mean_hazard_rate.1).1));
 
     // hazard ratio parameters a and b
     result.push_str(&format!("{:.6},{:.6}~{:.6},", spectrum.estimated_lambda.0, (spectrum.estimated_lambda.1).0, (spectrum.estimated_lambda.1).1));
     result.push_str(&format!("{:.6},{:.6}~{:.6},", spectrum.estimated_beta.0, (spectrum.estimated_beta.1).0, (spectrum.estimated_beta.1).1));
 
     // key coverage and estimated true coverage
-    result.push_str(&format!("{:.6},{:.6}~{:.6},", spectrum.key_coverage.0, (spectrum.key_coverage.1).0, (spectrum.key_coverage.1).1));
+    result.push_str(&format!("{},{}~{},", spectrum.key_coverage.0, (spectrum.key_coverage.1).0, (spectrum.key_coverage.1).1));
     result.push_str(&format!("{:.6},{:.6}~{:.6},", spectrum.estimated_coverage.0, (spectrum.estimated_coverage.1).0, (spectrum.estimated_coverage.1).1));
 
     // remove the last comma
@@ -1002,7 +998,7 @@ pub fn header_str(bidirectional: bool) -> String {
     let mut result = String::new();
 
     result.push_str("per_base_error_rate,per_base_error_rate_5-95th_percentile,");
-    result.push_str("effective_error_rate,effective_error_rate_5-95th_percentile,");
+    result.push_str("mean_hazard_rate,mean_hazard_rate_5-95th_percentile,");
     result.push_str("lambda,lambda_5-95th_percentile,");
     result.push_str("beta,beta_5-95th_percentile,");
 
