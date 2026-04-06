@@ -1,6 +1,6 @@
 
 <p align="center">
-  <img src="./logo.png" alt="Logo" width="300"/>
+  <img src="./figures/misc/logo.png" alt="Logo" width="300"/>
 </p>
 
 # Skiver: Rapid quality control of genome sequencing datasets using (*k*, *v*)-mer sketches
@@ -69,11 +69,11 @@ We provide an all-in-one app for analyzing and visualizing the information in se
   <img src="figures/skiver-app/skiver_app_analysis.png" width="90%" />
 </p>
 
-Download link: [Windows]() | [Linux](https://github.com/GZHoffie/skiver/actions/runs/23633155650/artifacts/6138594346).
+Please see the [latest release](https://github.com/GZHoffie/skiver/releases) page for download links. Currently, Windows and Ubuntu are supported.
 
 ### Interpreting the results
 
-See [this guide](./result_interpretation.md) for a detailed documentation of what each output file contains.
+See [this guide](./docs/result_interpretation.md) for a detailed documentation of what each output file contains.
 
 ## Example
 
