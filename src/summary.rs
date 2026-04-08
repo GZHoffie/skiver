@@ -314,54 +314,49 @@ impl ErrorSpectrumSummary {
 }
 
 /// Phred quality-score calibration statistics.
-/// Corresponds to `KVmerStats` fields: `qscore_correct`, `qscore_error`,
-/// `qscore_correct_per_key`, `qscore_error_per_key`.
+/// Stores per-key correct/error counts indexed by (qscore, 0-based position in value).
+/// The sequential scan stops at the first mismatch, so position p is only recorded
+/// when all positions 0..p-1 matched consensus — implementing the hazard model.
 pub struct PhredScoreSummary {
-    pub correct: HashMap<u8, u64>,
-    pub error: HashMap<u8, u64>,
-    pub correct_per_key: Vec<HashMap<u8, u64>>,
-    pub error_per_key: Vec<HashMap<u8, u64>>,
+    /// Per-key correct counts indexed by (qscore, 0-based position in value).
+    pub correct_pos_per_key: Vec<HashMap<(u8, u8), u64>>,
+    /// Per-key error counts indexed by (qscore, 0-based position in value).
+    pub error_pos_per_key: Vec<HashMap<(u8, u8), u64>>,
 }
 
 impl PhredScoreSummary {
     pub fn new() -> Self {
         PhredScoreSummary {
-            correct: HashMap::new(),
-            error: HashMap::new(),
-            correct_per_key: Vec::new(),
-            error_per_key: Vec::new(),
+            correct_pos_per_key: Vec::new(),
+            error_pos_per_key: Vec::new(),
         }
     }
 
-    /// Accumulate one key's Phred calibration data.
-    /// If `first_base_only` is true, only the first base of each value is considered.
-    pub fn update(&mut self, consensus: u64, value_size: u8, value_map: &HashMap<u64, Vec<ValueInfo>>, first_base_only: bool) {
-        let mut key_correct: HashMap<u8, u64> = HashMap::new();
-        let mut key_error: HashMap<u8, u64> = HashMap::new();
+    /// Accumulate one key's Phred calibration data across all value positions.
+    pub fn update(&mut self, consensus: u64, value_size: u8, value_map: &HashMap<u64, Vec<ValueInfo>>) {
+        let mut key_correct_pos: HashMap<(u8, u8), u64> = HashMap::new();
+        let mut key_error_pos: HashMap<(u8, u8), u64> = HashMap::new();
         for (value, info_list) in value_map {
             for info in info_list {
                 if info.qual.is_empty() {
                     continue;
                 }
-                let range = if first_base_only { 0..1 } else { 0..value_size as usize };
-                for p in range {
+                for p in 0..value_size as usize {
                     let bit_shift = 2 * (value_size as usize - 1 - p);
                     let value_base     = (value     >> bit_shift) & 0b11;
                     let consensus_base = (consensus >> bit_shift) & 0b11;
                     let phred = info.qual[p].saturating_sub(33);
                     if value_base == consensus_base {
-                        *key_correct.entry(phred).or_insert(0) += 1;
+                        *key_correct_pos.entry((phred, p as u8)).or_insert(0) += 1;
                     } else {
-                        *key_error.entry(phred).or_insert(0) += 1;
+                        *key_error_pos.entry((phred, p as u8)).or_insert(0) += 1;
                         break;
                     }
                 }
             }
         }
-        for (&q, &c) in &key_correct { *self.correct.entry(q).or_insert(0) += c; }
-        for (&q, &e) in &key_error   { *self.error.entry(q).or_insert(0)   += e; }
-        self.correct_per_key.push(key_correct);
-        self.error_per_key.push(key_error);
+        self.correct_pos_per_key.push(key_correct_pos);
+        self.error_pos_per_key.push(key_error_pos);
     }
 }
 
@@ -385,8 +380,7 @@ impl ReadPositionSummary {
         }
     }
 
-    /// If `first_base_only` is true, only the first base of each value is considered.
-    pub fn update(&mut self, consensus: u64, value_size: u8, value_map: &HashMap<u64, Vec<ValueInfo>>, first_base_only: bool) {
+    pub fn update(&mut self, consensus: u64, value_size: u8, value_map: &HashMap<u64, Vec<ValueInfo>>) {
         let mut correct_from_start: HashMap<u32, u64> = HashMap::new();
         let mut correct_from_end: HashMap<u32, u64> = HashMap::new();
         let mut error_from_start: HashMap<u32, u64> = HashMap::new();
@@ -396,8 +390,7 @@ impl ReadPositionSummary {
                 if info.qual.is_empty() {
                     continue;
                 }
-                let range = if first_base_only { 0..1 } else { 0..value_size as usize };
-                for p in range {
+                for p in 0..value_size as usize {
                     let bit_shift = 2 * (value_size as usize - 1 - p);
                     let value_base     = (value     >> bit_shift) & 0b11;
                     let consensus_base = (consensus >> bit_shift) & 0b11;
@@ -473,33 +466,3 @@ impl ReadPositionSummary {
     }
 }
 
-impl PhredScoreSummary {
-    pub fn to_csv(&self, indices: Option<&[usize]>) -> String {
-        use std::fmt::Write;
-        let all: Vec<usize>;
-        let indices = match indices {
-            Some(idx) => idx,
-            None => { all = (0..self.correct_per_key.len()).collect(); &all }
-        };
-        let mut correct: HashMap<u8, u64> = HashMap::new();
-        let mut error: HashMap<u8, u64> = HashMap::new();
-        for &i in indices {
-            for (&q, &c) in &self.correct_per_key[i] { *correct.entry(q).or_insert(0) += c; }
-            for (&q, &e) in &self.error_per_key[i]   { *error.entry(q).or_insert(0) += e; }
-        }
-        let mut scores: Vec<u8> = correct.keys().chain(error.keys()).copied().collect();
-        scores.sort();
-        scores.dedup();
-        let mut out = String::new();
-        writeln!(out, "qscore,empirical_qscore,num_correct,num_error,error_rate").unwrap();
-        for q in scores {
-            let num_correct = correct.get(&q).copied().unwrap_or(0);
-            let num_error   = error.get(&q).copied().unwrap_or(0);
-            let total = num_correct + num_error;
-            let error_rate = if total > 0 { num_error as f64 / total as f64 } else { 0.0 };
-            let empirical_q = if error_rate > 0.0 { -10.0 * error_rate.log10() } else { f64::INFINITY };
-            writeln!(out, "{},{:.4},{},{},{:.6}", q, empirical_q, num_correct, num_error, error_rate).unwrap();
-        }
-        out
-    }
-}

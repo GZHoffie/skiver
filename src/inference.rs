@@ -15,20 +15,15 @@ use rand::Rng;
  * Each field is a tuple of (estimate, (5th_percentile, 95th_percentile))
  * where the confidence interval is estimated using bootstrap
  */
-pub struct ReadPositionCalibration {
-    pub index: u32,
-    pub from_start: bool,
-    pub num_correct: u64,
-    pub num_error: u64,
-}
-
-pub struct QscoreCalibration {
+/// Per-Q-score Weibull calibration: lambda_Q, beta_Q, and per-base error rate.
+pub struct QscoreWeibullCalibration {
     pub qscore: u8,
+    pub lambda: f64,
+    pub beta: f64,
+    /// 1 - exp(-lambda_Q)
+    pub per_base_error_rate: f64,
     pub num_correct: u64,
     pub num_error: u64,
-    pub error_rate: f64,
-    pub ci_lower: f64,
-    pub ci_upper: f64,
 }
 
 pub struct ErrorSpectrum {
@@ -771,131 +766,71 @@ impl ErrorAnalyzer {
     /// those key indices to estimate the 5th–95th percentile confidence interval.
     ///
     /// Returns a vector of `(qscore, num_correct, num_error, error_rate, ci_lower, ci_upper)`.
-    pub fn calibrate_qscores(&self, stats: &KVmerStats) -> Vec<QscoreCalibration> {
-        // Filter outlier keys
-        let indices = if !self.args.use_all {
-            self.find_hazard_ratio_outliers(stats)
-        } else {
-            (0..stats.error_summary.consensus_counts.len()).collect()
-        };
+    /// Estimate per-Q-score Weibull parameters using the same hazard-ratio
+    /// methodology as the global fit.
+    ///
+    /// For each Q-score q and each value position p (0-indexed), the hazard
+    /// ratio h(p | q) = error_at_(q,p) / (correct_at_(q,p) + error_at_(q,p))
+    /// is computed from the inlier keys.  A Weibull model is then fitted to
+    /// the sequence h(p=v_min-1 | q), …, h(p=v_max-1 | q), yielding lambda_Q
+    /// and beta_Q.  The per-base error rate is 1 − exp(−lambda_Q).
+    pub fn calibrate_qscores_weibull(&self, stats: &KVmerStats, indices: &Vec<usize>) -> Vec<QscoreWeibullCalibration> {
+        let v = stats.v as usize;
+        let v_min = 1 + self.args.ignore_smallest_t;   // 1-indexed, inclusive
+        let v_max = v.saturating_sub(self.args.ignore_largest_t); // 1-indexed, inclusive
 
-        // Aggregate qscore counts from inlier keys
-        let mut qscore_correct: HashMap<u8, u64> = HashMap::new();
-        let mut qscore_error: HashMap<u8, u64> = HashMap::new();
-        for &i in &indices {
-            for (&q, &c) in &stats.phred_summary.correct_per_key[i] {
-                *qscore_correct.entry(q).or_insert(0) += c;
+        // Aggregate per-(qscore, 0-based-position) counts over inlier keys.
+        let mut correct_pos: HashMap<(u8, u8), u64> = HashMap::new();
+        let mut error_pos: HashMap<(u8, u8), u64> = HashMap::new();
+
+        for &i in indices {
+            for (&key, &c) in &stats.phred_summary.correct_pos_per_key[i] {
+                *correct_pos.entry(key).or_insert(0) += c;
             }
-            for (&q, &e) in &stats.phred_summary.error_per_key[i] {
-                *qscore_error.entry(q).or_insert(0) += e;
+            for (&key, &e) in &stats.phred_summary.error_pos_per_key[i] {
+                *error_pos.entry(key).or_insert(0) += e;
             }
         }
 
-        let mut qscores: Vec<u8> = qscore_correct.keys()
-            .chain(qscore_error.keys())
-            .cloned()
+        // Collect all observed Q-scores.
+        let mut qscores: Vec<u8> = correct_pos.keys().chain(error_pos.keys())
+            .map(|&(q, _)| q)
             .collect();
         qscores.sort_unstable();
         qscores.dedup();
 
-        // Bootstrap: resample key indices with replacement, recompute error rates
-        let mut bootstrap_rates: HashMap<u8, Vec<f64>> = qscores.iter().map(|&q| (q, Vec::new())).collect();
-        for _ in 0..self.args.num_experiments {
-            let sample = Self::random_subsample_with_replacement(&indices, indices.len());
-            let mut c_sample: HashMap<u8, u64> = HashMap::new();
-            let mut e_sample: HashMap<u8, u64> = HashMap::new();
-            for &i in &sample {
-                for (&q, &c) in &stats.phred_summary.correct_per_key[i] {
-                    *c_sample.entry(q).or_insert(0) += c;
-                }
-                for (&q, &e) in &stats.phred_summary.error_per_key[i] {
-                    *e_sample.entry(q).or_insert(0) += e;
-                }
-            }
-            for &q in &qscores {
-                let c = *c_sample.get(&q).unwrap_or(&0);
-                let e = *e_sample.get(&q).unwrap_or(&0);
+        let mut result = Vec::new();
+        for q in qscores {
+            // Build hazard-ratio sequence for positions p = v_min-1 .. v_max-1 (0-indexed).
+            let mut hazard_ratios: Vec<f32> = Vec::new();
+            let mut total_correct = 0u64;
+            let mut total_error   = 0u64;
+
+            for p in (v_min - 1)..v_max {
+                let c = *correct_pos.get(&(q, p as u8)).unwrap_or(&0);
+                let e = *error_pos.get(&(q, p as u8)).unwrap_or(&0);
+                total_correct += c;
+                total_error   += e;
                 let total = c + e;
-                let rate = if total > 0 { e as f64 / total as f64 } else { 0.0 };
-                bootstrap_rates.get_mut(&q).unwrap().push(rate);
+                hazard_ratios.push(if total > 0 { e as f32 / total as f32 } else { 0.0 });
             }
-        }
 
-        // Build result with point estimates and CI
-        let mut result = Vec::new();
-        for &q in &qscores {
-            let correct = *qscore_correct.get(&q).unwrap_or(&0);
-            let error   = *qscore_error.get(&q).unwrap_or(&0);
-            let total   = correct + error;
-            let error_rate = if total > 0 { error as f64 / total as f64 } else { 0.0 };
-
-            let mut rates = bootstrap_rates[&q].clone();
-            rates.sort_by(f64::total_cmp);
-            let n = rates.len();
-            let lower = if n > 0 { rates[(n as f64 * 0.05) as usize] } else { 0.0 };
-            let upper = if n > 0 { rates[((n as f64 * 0.95) as usize).min(n - 1)] } else { 0.0 };
-
-            result.push(QscoreCalibration { qscore: q, num_correct: correct, num_error: error, error_rate, ci_lower: lower, ci_upper: upper });
-        }
-        result
-    }
-
-    /// Like `calibrate_qscores`, but aggregates correct/error counts by read position
-    /// (from start and from end) across inlier keys.  No bootstrap CI is computed
-    /// since the output does not include confidence intervals.
-    pub fn calibrate_read_positions(&self, stats: &KVmerStats) -> Vec<ReadPositionCalibration> {
-        let indices = if !self.args.use_all {
-            self.find_hazard_ratio_outliers(stats)
-        } else {
-            (0..stats.error_summary.consensus_counts.len()).collect()
-        };
-
-        let mut correct_from_start: HashMap<u32, u64> = HashMap::new();
-        let mut correct_from_end: HashMap<u32, u64> = HashMap::new();
-        let mut error_from_start: HashMap<u32, u64> = HashMap::new();
-        let mut error_from_end: HashMap<u32, u64> = HashMap::new();
-
-        for &i in &indices {
-            for (&pos, &c) in &stats.read_position_summary.correct_from_start_per_key[i] {
-                *correct_from_start.entry(pos).or_insert(0) += c;
+            if total_correct + total_error == 0 {
+                continue;
             }
-            for (&pos, &c) in &stats.read_position_summary.correct_from_end_per_key[i] {
-                *correct_from_end.entry(pos).or_insert(0) += c;
-            }
-            for (&pos, &e) in &stats.read_position_summary.error_from_start_per_key[i] {
-                *error_from_start.entry(pos).or_insert(0) += e;
-            }
-            for (&pos, &e) in &stats.read_position_summary.error_from_end_per_key[i] {
-                *error_from_end.entry(pos).or_insert(0) += e;
-            }
-        }
 
-        let mut result = Vec::new();
+            let (lambda, beta) = self.fit_hazard_ratio(&hazard_ratios);
+            let per_base_error_rate = 1.0 - (-(lambda as f64)).exp();
 
-        let mut start_positions: Vec<u32> = correct_from_start.keys().chain(error_from_start.keys()).copied().collect();
-        start_positions.sort_unstable();
-        start_positions.dedup();
-        for pos in start_positions {
-            result.push(ReadPositionCalibration {
-                index: pos,
-                from_start: true,
-                num_correct: *correct_from_start.get(&pos).unwrap_or(&0),
-                num_error: *error_from_start.get(&pos).unwrap_or(&0),
+            result.push(QscoreWeibullCalibration {
+                qscore: q,
+                lambda: lambda as f64,
+                beta: beta as f64,
+                per_base_error_rate,
+                num_correct: total_correct,
+                num_error: total_error,
             });
         }
-
-        let mut end_positions: Vec<u32> = correct_from_end.keys().chain(error_from_end.keys()).copied().collect();
-        end_positions.sort_unstable();
-        end_positions.dedup();
-        for pos in end_positions {
-            result.push(ReadPositionCalibration {
-                index: pos,
-                from_start: false,
-                num_correct: *correct_from_end.get(&pos).unwrap_or(&0),
-                num_error: *error_from_end.get(&pos).unwrap_or(&0),
-            });
-        }
-
         result
     }
 
@@ -941,8 +876,19 @@ impl ErrorAnalyzer {
             fs::write(format!("{}.kvmer.csv", prefix), stats.error_summary.to_csv(Some(&indices))).unwrap();
             fs::write(format!("{}.summary_error_spectrum.csv", prefix), stats.error_spectrum.to_csv(Some(&indices))).unwrap();
             fs::write(format!("{}.summary_error_spectrum_dependence_on_t.csv", prefix), stats.error_spectrum.to_dependence_on_t_csv(Some(&indices), self.args.k as usize, self.args.ignore_smallest_t, self.args.ignore_largest_t)).unwrap();
-            fs::write(format!("{}.summary_phred.csv", prefix), stats.phred_summary.to_csv(Some(&indices))).unwrap();
             fs::write(format!("{}.summary_read_position.csv", prefix), stats.read_position_summary.to_csv(Some(&indices))).unwrap();
+
+            // Per-Q-score Weibull calibration
+            let qscore_weibull = self.calibrate_qscores_weibull(stats, &indices);
+            let mut phred_csv = String::from("qscore,lambda,beta,per_base_error_rate,num_correct,num_error\n");
+            for cal in &qscore_weibull {
+                phred_csv.push_str(&format!(
+                    "{},{:.6},{:.6},{:.6},{},{}\n",
+                    cal.qscore, cal.lambda, cal.beta, cal.per_base_error_rate,
+                    cal.num_correct, cal.num_error,
+                ));
+            }
+            fs::write(format!("{}.summary_phred.csv", prefix), &phred_csv).unwrap();
         }
 
         // estimate key coverage

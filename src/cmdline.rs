@@ -109,8 +109,6 @@ pub struct AnalyzeArgs {
     #[clap(long, default_value_t = String::from("weibull"), help_heading = "ALGORITHM", help = "Model used to fit the hazard rates vs. t. Should be one of 'constant' (assuming that the hazard rate is constant over t), 'weibull' (assuming T follows a discrete Weibull distribution).")]
     pub hazard_model: String,
 
-    #[clap(long = "first-base-only", hidden = true, help_heading = "ALGORITHM", help = "[FOR TESTING] In ReadPositionSummary and PhredScoreSummary, consider only the first base of each value instead of all bases up to an error.")]
-    pub first_base_only: bool,
 }
 
 #[derive(Args, Default)]
