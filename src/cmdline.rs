@@ -106,6 +106,9 @@ pub struct AnalyzeArgs {
     #[clap(long, default_value_t = String::from("sum_ratio"), hidden = true, help = "One of 'slope', 'linear_fit', 'ratio_mean', 'sum_ratio'.")]
     pub estimation_method: String,
 
+    #[clap(short, default_value_t = 0.5, help_heading = "ALGORITHM", help = "Regularization parameter for ridge regression in the estimation of Weibull hazard model parameters.")]
+    pub alpha: f32,
+
     #[clap(long, default_value_t = String::from("weibull"), help_heading = "ALGORITHM", help = "Model used to fit the hazard rates vs. t. Should be one of 'constant' (assuming that the hazard rate is constant over t), 'weibull' (assuming T follows a discrete Weibull distribution).")]
     pub hazard_model: String,
 

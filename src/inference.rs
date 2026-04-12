@@ -175,7 +175,7 @@ impl ErrorAnalyzer {
     }
 
     #[allow(dead_code)]
-    fn ridge_fit_f32(x: &Vec<f32>, y: &Vec<f32>, lambda: f32) -> (f32, f32) {
+    fn ridge_fit_f32(x: &Vec<f32>, y: &Vec<f32>, alpha: f32) -> (f32, f32) {
         let n = x.len();
         // Means
         let sum_x = x.iter().sum::<f32>();
@@ -201,7 +201,7 @@ impl ErrorAnalyzer {
         //println!("sxx: {}, sxy: {}", sxx, sxy);
 
         // Ridge on slope only
-        let denom = sxx + lambda;
+        let denom = sxx + alpha;
         let k = if denom != 0.0 { sxy / denom } else { 0.0 };
         let b = mean_y - k * mean_x;
 
@@ -211,9 +211,8 @@ impl ErrorAnalyzer {
     }
 
     fn linear_fit_huber_f32(x: &Vec<f32>, y: &Vec<f32>) -> (f32, f32) {
-        let (slope, intercept) = huber_ridge_fit_1d(x, y, 0.1, 0.5, 100, 1e-6);
-        
-        (slope, intercept)
+        // sklearn HuberRegressor defaults: epsilon=1.35, alpha=0.0001, max_iter=100, tol=1e-5
+        huber_regression_1d(x, y, 1.35, 0.0001, 100, 1e-5)
     }
 
     /**
@@ -409,8 +408,8 @@ impl ErrorAnalyzer {
                 (-(- hr.clamp(EPSILON, 1.0 - EPSILON)).ln_1p()).ln())
             .collect::<Vec<f32>>();
         //let (b, log_a) = Self::linear_fit_f32(&x, &y);
-        //let (slope, intercept) = Self::ridge_fit_f32(&x, &y, 1.);
-        let (slope, intercept) = Self::linear_fit_huber_f32(&x, &y);
+        let (slope, intercept) = Self::ridge_fit_f32(&x, &y, self.args.alpha);
+        //let (slope, intercept) = Self::linear_fit_huber_f32(&x, &y);
         
         
         let beta = slope + 1.;
