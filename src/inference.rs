@@ -490,11 +490,14 @@ impl ErrorAnalyzer {
      *     Treat the count at t as Binomial(n, 1-h(t)) where n is the count at t-1.
      *     If P(X <= observed) < outlier_threshold (default 1e-9), mark the key as an outlier.
      *  3. Re-estimate lambda and beta from the remaining keys.
-     *  4. Repeat until lambda and beta change by less than 1e-4.
+     *  4. Repeat until lambda and beta change by less than 1e-5.
      */
     pub fn find_hazard_ratio_outliers(&self, stats: &KVmerStats) -> Vec<usize> {
         let n_keys = stats.error_summary.consensus_counts.len();
-        let mut active = vec![true; n_keys];
+        // Start with top_n_mask so that kv-mers outside the top-n are never
+        // considered as candidates or counted as inliers.
+        let mut active = stats.top_n_mask.clone();
+        let mut num_active_keys = active.iter().filter(|&&x| x).count();
 
         let max_iter = 10;
         let convergence_tol = 1e-5_f32;
@@ -550,7 +553,7 @@ impl ErrorAnalyzer {
 
         let indices: Vec<usize> = (0..n_keys).filter(|&i| active[i]).collect();
         info!("Identified {} inliers out of {} data points based on iterative Binomial outlier removal ({}%).",
-            indices.len(), n_keys, (indices.len() as f32 / n_keys as f32) * 100.0);
+            indices.len(), num_active_keys, (indices.len() as f32 / num_active_keys as f32) * 100.0);
         indices
     }
 
@@ -937,7 +940,7 @@ impl ErrorAnalyzer {
                 ).expect("Could not write to hazard ratio output file.");
             }
 
-            fs::write(format!("{}.kvmer.csv", prefix), stats.error_summary.to_csv(Some(&indices))).unwrap();
+            fs::write(format!("{}.kvmer.csv", prefix), stats.error_summary.to_csv(Some(&indices), Some(&stats.top_n_mask))).unwrap();
             fs::write(format!("{}.summary_error_spectrum.csv", prefix), stats.error_spectrum.to_csv(Some(&indices))).unwrap();
             fs::write(format!("{}.summary_error_spectrum_dependence_on_t.csv", prefix), stats.error_spectrum.to_dependence_on_t_csv(Some(&indices), self.args.k as usize, self.args.ignore_smallest_t, self.args.ignore_largest_t)).unwrap();
             fs::write(format!("{}.summary_phred.csv", prefix), stats.phred_summary.to_csv(Some(&indices))).unwrap();

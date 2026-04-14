@@ -150,7 +150,7 @@ impl ErrorSummary {
 }
 
 impl ErrorSummary {
-    pub fn to_csv(&self, indices: Option<&[usize]>) -> String {
+    pub fn to_csv(&self, indices: Option<&[usize]>, top_n_mask: Option<&[bool]>) -> String {
         use std::fmt::Write;
         use std::collections::HashSet;
         let n = self.consensus_counts.len();
@@ -159,7 +159,7 @@ impl ErrorSummary {
             None => (0..n).collect(),
         };
         let mut out = String::new();
-        write!(out, "key,consensus_value,passes_filter,homopolymer_length,consensus_count,neighbor_count,total_count").unwrap();
+        write!(out, "key,consensus_value,passes_filter,top_n,homopolymer_length,consensus_count,neighbor_count,total_count").unwrap();
         for op in ALL_OPERATIONS {
             write!(out, ",{:?}", op).unwrap();
         }
@@ -168,11 +168,13 @@ impl ErrorSummary {
         }
         writeln!(out).unwrap();
         for i in 0..n {
+            let top_n = top_n_mask.map_or(true, |m| m[i]);
             write!(out,
-                "{},{},{},{},{},{},{}",
+                "{},{},{},{},{},{},{},{}",
                 self.key_strings[i],
                 self.value_strings[i],
                 index_set.contains(&i),
+                top_n,
                 self.homopolymer_lengths[i],
                 self.consensus_counts[i],
                 self.neighbor_counts[i],

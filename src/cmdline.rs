@@ -114,6 +114,9 @@ pub struct AnalyzeArgs {
 
     #[clap(long = "first-base-only", hidden = true, help_heading = "ALGORITHM", help = "[FOR TESTING] In ReadPositionSummary and PhredScoreSummary, consider only the first base of each value instead of all bases up to an error.")]
     pub first_base_only: bool,
+
+    #[clap(short = 'n', long = "number-kvmers", default_value_t = 1000, help_heading = "ALGORITHM", help = "Maximum number of kv-mers to retain after sorting by total count (highest first). If fewer kv-mers are available a warning is emitted.")]
+    pub number_kvmers: usize,
 }
 
 #[derive(Args, Default)]

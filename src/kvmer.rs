@@ -23,6 +23,44 @@ pub struct KVmerStats {
     pub error_spectrum: ErrorSpectrumSummary,
     pub phred_summary: PhredScoreSummary,
     pub read_position_summary: ReadPositionSummary,
+    /// Per-kv-mer flag: true if this kv-mer is among the top-n by total_count.
+    /// Initialised to all-true; updated by `compute_top_n_mask`.
+    pub top_n_mask: Vec<bool>,
+}
+
+impl KVmerStats {
+    /// Mark only the top `n` kv-mers (by total_count, descending) as true in
+    /// `top_n_mask`, setting all others to false.  Emits a warning when fewer
+    /// than `n` kv-mers are available.
+    pub fn compute_top_n_mask(&mut self, n: usize) {
+        let total = self.keys.len();
+        if total < n {
+            warn!(
+                "Only {} kv-mers are available (fewer than the requested {}). \
+                 This may lead to inaccurate estimates, possibly due to low coverage \
+                 or a high error rate. Consider setting a smaller value for k and v, \
+                 and options \"-c\" or \"-l\".",
+                total, n
+            );
+            // All entries stay true — there are fewer than n anyway.
+            return;
+        }
+
+        // Collect (total_count, original_index) and find the n-th largest threshold.
+        let mut counts_with_idx: Vec<(u32, usize)> = self.error_summary.total_counts
+            .iter()
+            .copied()
+            .enumerate()
+            .map(|(i, c)| (c, i))
+            .collect();
+        counts_with_idx.sort_unstable_by(|a, b| b.0.cmp(&a.0));
+
+        // Set the mask: true for the top-n indices, false for the rest.
+        self.top_n_mask = vec![false; total];
+        for (_, idx) in counts_with_idx.into_iter().take(n) {
+            self.top_n_mask[idx] = true;
+        }
+    }
 }
 
 
@@ -271,6 +309,7 @@ impl KVmerSet {
             }
         }
 
+        let n = keys.len();
         KVmerStats {
             k: self.key_size,
             v: self.value_size,
@@ -280,6 +319,7 @@ impl KVmerSet {
             error_spectrum,
             phred_summary,
             read_position_summary,
+            top_n_mask: vec![true; n],
         }
     }
 
@@ -332,6 +372,7 @@ impl KVmerSet {
         //println!("Number of kvmers in read set: {}", self.num_kvmers);
         //println!("Proportion of kvmers that match reference: {:.4}%", shared_kmer_count as f64 / self.num_kvmers as f64 * 100.);
 
+        let n = keys.len();
         KVmerStats {
             k: self.key_size,
             v: self.value_size,
@@ -341,6 +382,7 @@ impl KVmerSet {
             error_spectrum,
             phred_summary,
             read_position_summary,
+            top_n_mask: vec![true; n],
         }
     }
 
