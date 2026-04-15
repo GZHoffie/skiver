@@ -2,6 +2,35 @@ use std::collections::HashMap;
 use crate::types::{EditOperation, ALL_OPERATIONS, SEQ_TO_BYTE, SEQ_TO_CHAR, ValueInfo, NeighborInfo};
 use crate::utils::_get_neighbors;
 
+fn logit(p: f64) -> f64 { (p / (1.0 - p)).ln() }
+fn sigmoid(x: f64) -> f64 { 1.0 / (1.0 + (-x).exp()) }
+
+/// Find δ such that the weighted average of `sigmoid(logit(raw_rate_i) + δ)` equals `target`.
+/// `bins` is a slice of `(raw_rate, weight)` pairs; bins with `raw_rate == 0` contribute 0
+/// regardless of δ and are excluded from the search (they don't affect the result).
+/// Returns δ = 0.0 if all bins have zero rate or total weight is zero.
+fn find_logit_shift(bins: &[(f64, f64)], target: f64) -> f64 {
+    let total_weight: f64 = bins.iter().map(|(_, w)| w).sum();
+    if total_weight == 0.0 { return 0.0; }
+
+    let weighted_avg = |delta: f64| -> f64 {
+        bins.iter().map(|(r, w)| {
+            let norm = if *r <= 0.0 { 0.0 } else if *r >= 1.0 { 1.0 } else {
+                sigmoid(logit(*r) + delta)
+            };
+            norm * w
+        }).sum::<f64>() / total_weight
+    };
+
+    let mut lo = -50.0_f64;
+    let mut hi =  50.0_f64;
+    for _ in 0..64 {
+        let mid = (lo + hi) * 0.5;
+        if weighted_avg(mid) < target { lo = mid; } else { hi = mid; }
+    }
+    (lo + hi) * 0.5
+}
+
 /// Per-key error-rate statistics.
 /// Corresponds to `KVmerStats` fields: `consensus_counts`, `total_counts`,
 /// `neighbor_counts`, `consensus_up_to_v_counts`.
@@ -542,8 +571,9 @@ impl ReadPositionSummary {
 
 impl ReadPositionSummary {
     /// `per_base_error_rate` is used for the same normalisation as `PhredScoreSummary::to_csv`:
-    /// start and end positions are normalised independently so that each direction's weighted
-    /// average of `normalized_error_rate` equals `per_base_error_rate`.
+    /// start and end positions are normalised independently via a logit-shift so that each
+    /// direction's weighted average of `normalized_error_rate` equals `per_base_error_rate`.
+    /// `normalized_error_rate` is always in `[0, 1]`.
     pub fn to_csv(&self, indices: Option<&[usize]>, per_base_error_rate: f64) -> String {
         use std::fmt::Write;
         let all: Vec<usize>;
@@ -571,20 +601,33 @@ impl ReadPositionSummary {
             for (&pos, &c) in &self.deletion_from_end_per_key[i]       { *deletion_from_end.entry(pos).or_insert(0)       += c; }
         }
 
-        // Compute normalisation scales for each direction independently.
-        let scale_for = |obs_map: &HashMap<u32, u64>,
-                         sub_map: &HashMap<u32, u64>,
-                         ins_map: &HashMap<u32, u64>,
-                         del_map: &HashMap<u32, u64>| -> f64 {
-            let total_obs: u64 = obs_map.values().sum();
-            let total_err: u64 = sub_map.values().sum::<u64>()
-                + ins_map.values().sum::<u64>()
-                + del_map.values().sum::<u64>();
-            let raw = if total_obs > 0 { total_err as f64 / total_obs as f64 } else { 0.0 };
-            if raw > 0.0 { per_base_error_rate / raw } else { 1.0 }
+        // Compute logit-shift δ for each direction independently.
+        let bins_for = |obs_map: &HashMap<u32, u64>,
+                        sub_map: &HashMap<u32, u64>,
+                        ins_map: &HashMap<u32, u64>,
+                        del_map: &HashMap<u32, u64>| -> f64 {
+            let bins: Vec<(f64, f64)> = obs_map.iter().map(|(pos, &no)| {
+                let ne = sub_map.get(pos).copied().unwrap_or(0)
+                    + ins_map.get(pos).copied().unwrap_or(0)
+                    + del_map.get(pos).copied().unwrap_or(0);
+                (ne as f64 / no as f64, no as f64)
+            }).collect();
+            find_logit_shift(&bins, per_base_error_rate)
         };
-        let scale_start = scale_for(&observed_from_start, &substitution_from_start, &insertion_from_start, &deletion_from_start);
-        let scale_end   = scale_for(&observed_from_end,   &substitution_from_end,   &insertion_from_end,   &deletion_from_end);
+        let delta_start = bins_for(&observed_from_start, &substitution_from_start, &insertion_from_start, &deletion_from_start);
+        let delta_end   = bins_for(&observed_from_end,   &substitution_from_end,   &insertion_from_end,   &deletion_from_end);
+
+        let normalize_bin = |no: u64, ns: u64, ni: u64, nd: u64, delta: f64| -> (f64, f64, f64, f64) {
+            if no == 0 { return (0.0, 0.0, 0.0, 0.0); }
+            let ne = ns + ni + nd;
+            let raw = ne as f64 / no as f64;
+            let norm_err = if raw <= 0.0 { 0.0 } else if raw >= 1.0 { 1.0 } else { sigmoid(logit(raw) + delta) };
+            let (norm_sub, norm_ins, norm_del) = if ne > 0 {
+                let s = norm_err / ne as f64;
+                (ns as f64 * s, ni as f64 * s, nd as f64 * s)
+            } else { (0.0, 0.0, 0.0) };
+            (norm_sub, norm_ins, norm_del, norm_err)
+        };
 
         let mut out = String::new();
         writeln!(out, "index,from_start,num_observed,num_substitution,num_insertion,num_deletion,normalized_substitution_rate,normalized_insertion_rate,normalized_deletion_rate,normalized_error_rate").unwrap();
@@ -597,13 +640,7 @@ impl ReadPositionSummary {
             let ns = substitution_from_start.get(&pos).copied().unwrap_or(0);
             let ni = insertion_from_start.get(&pos).copied().unwrap_or(0);
             let nd = deletion_from_start.get(&pos).copied().unwrap_or(0);
-            let ne = ns + ni + nd;
-            let (norm_sub, norm_ins, norm_del, norm_err) = if no > 0 {
-                (ns as f64 / no as f64 * scale_start,
-                 ni as f64 / no as f64 * scale_start,
-                 nd as f64 / no as f64 * scale_start,
-                 ne as f64 / no as f64 * scale_start)
-            } else { (0.0, 0.0, 0.0, 0.0) };
+            let (norm_sub, norm_ins, norm_del, norm_err) = normalize_bin(no, ns, ni, nd, delta_start);
             writeln!(out, "{},true,{},{},{},{},{:.6},{:.6},{:.6},{:.6}",
                 pos, no, ns, ni, nd, norm_sub, norm_ins, norm_del, norm_err).unwrap();
         }
@@ -616,13 +653,7 @@ impl ReadPositionSummary {
             let ns = substitution_from_end.get(&pos).copied().unwrap_or(0);
             let ni = insertion_from_end.get(&pos).copied().unwrap_or(0);
             let nd = deletion_from_end.get(&pos).copied().unwrap_or(0);
-            let ne = ns + ni + nd;
-            let (norm_sub, norm_ins, norm_del, norm_err) = if no > 0 {
-                (ns as f64 / no as f64 * scale_end,
-                 ni as f64 / no as f64 * scale_end,
-                 nd as f64 / no as f64 * scale_end,
-                 ne as f64 / no as f64 * scale_end)
-            } else { (0.0, 0.0, 0.0, 0.0) };
+            let (norm_sub, norm_ins, norm_del, norm_err) = normalize_bin(no, ns, ni, nd, delta_end);
             writeln!(out, "{},false,{},{},{},{},{:.6},{:.6},{:.6},{:.6}",
                 pos, no, ns, ni, nd, norm_sub, norm_ins, norm_del, norm_err).unwrap();
         }
@@ -633,8 +664,9 @@ impl ReadPositionSummary {
 
 impl PhredScoreSummary {
     /// `per_base_error_rate` is the global error rate from the hazard-ratio model
-    /// (i.e. `1 - exp(-lambda)`) used to normalise the per-qscore rates so that
-    /// `sum(normalized_error_rate * num_observed) / sum(num_observed) == per_base_error_rate`.
+    /// (i.e. `1 - exp(-lambda)`) used to normalise the per-qscore rates via a logit-shift so
+    /// that `sum(normalized_error_rate * num_observed) / sum(num_observed) == per_base_error_rate`.
+    /// `normalized_error_rate` is always in `[0, 1]`.
     pub fn to_csv(&self, indices: Option<&[usize]>, per_base_error_rate: f64) -> String {
         use std::fmt::Write;
         let all: Vec<usize>;
@@ -653,18 +685,14 @@ impl PhredScoreSummary {
             for (&q, &c) in &self.deletion_per_key[i]     { *deletion.entry(q).or_insert(0)     += c; }
         }
 
-        // Compute the normalisation scale so that the weighted average of
-        // normalized_error_rate equals per_base_error_rate.
-        let total_observed: u64 = observed.values().sum();
-        let total_error: u64 = substitution.values().sum::<u64>()
-            + insertion.values().sum::<u64>()
-            + deletion.values().sum::<u64>();
-        let raw_aggregate_rate = if total_observed > 0 {
-            total_error as f64 / total_observed as f64
-        } else { 0.0 };
-        let scale = if raw_aggregate_rate > 0.0 {
-            per_base_error_rate / raw_aggregate_rate
-        } else { 1.0 };
+        // Build (raw_rate, weight) pairs for the logit-shift normalisation.
+        let bins: Vec<(f64, f64)> = observed.iter().map(|(q, &no)| {
+            let ne = substitution.get(q).copied().unwrap_or(0)
+                + insertion.get(q).copied().unwrap_or(0)
+                + deletion.get(q).copied().unwrap_or(0);
+            (ne as f64 / no as f64, no as f64)
+        }).collect();
+        let delta = find_logit_shift(&bins, per_base_error_rate);
 
         let mut scores: Vec<u8> = observed.keys().copied().collect();
         scores.sort();
@@ -677,10 +705,17 @@ impl PhredScoreSummary {
             let num_insertion    = insertion.get(&q).copied().unwrap_or(0);
             let num_deletion     = deletion.get(&q).copied().unwrap_or(0);
             let num_error = num_substitution + num_insertion + num_deletion;
-            let norm_sub  = if num_observed > 0 { num_substitution as f64 / num_observed as f64 * scale } else { 0.0 };
-            let norm_ins  = if num_observed > 0 { num_insertion    as f64 / num_observed as f64 * scale } else { 0.0 };
-            let norm_del  = if num_observed > 0 { num_deletion     as f64 / num_observed as f64 * scale } else { 0.0 };
-            let norm_err  = if num_observed > 0 { num_error        as f64 / num_observed as f64 * scale } else { 0.0 };
+            let norm_err = if num_observed > 0 {
+                let raw = num_error as f64 / num_observed as f64;
+                if raw <= 0.0 { 0.0 } else if raw >= 1.0 { 1.0 } else { sigmoid(logit(raw) + delta) }
+            } else { 0.0 };
+            // Distribute norm_err proportionally among sub/ins/del.
+            let (norm_sub, norm_ins, norm_del) = if num_error > 0 {
+                let scale = norm_err / num_error as f64;
+                (num_substitution as f64 * scale,
+                 num_insertion    as f64 * scale,
+                 num_deletion     as f64 * scale)
+            } else { (0.0, 0.0, 0.0) };
             let empirical_q = if norm_err > 0.0 { -10.0 * norm_err.log10() } else { f64::INFINITY };
             writeln!(out, "{},{:.4},{},{},{},{},{:.6},{:.6},{:.6},{:.6}",
                 q, empirical_q,
