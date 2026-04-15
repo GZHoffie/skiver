@@ -18,14 +18,18 @@ use rand::Rng;
 pub struct ReadPositionCalibration {
     pub index: u32,
     pub from_start: bool,
-    pub num_correct: u64,
-    pub num_error: u64,
+    pub num_observed: u64,
+    pub num_substitution: u64,
+    pub num_insertion: u64,
+    pub num_deletion: u64,
 }
 
 pub struct QscoreCalibration {
     pub qscore: u8,
-    pub num_correct: u64,
-    pub num_error: u64,
+    pub num_observed: u64,
+    pub num_substitution: u64,
+    pub num_insertion: u64,
+    pub num_deletion: u64,
     pub error_rate: f64,
     pub ci_lower: f64,
     pub ci_upper: f64,
@@ -780,21 +784,26 @@ impl ErrorAnalyzer {
         };
 
         // Aggregate qscore counts from inlier keys
-        let mut qscore_correct: HashMap<u8, u64> = HashMap::new();
-        let mut qscore_error: HashMap<u8, u64> = HashMap::new();
+        let mut qscore_observed: HashMap<u8, u64> = HashMap::new();
+        let mut qscore_substitution: HashMap<u8, u64> = HashMap::new();
+        let mut qscore_insertion: HashMap<u8, u64> = HashMap::new();
+        let mut qscore_deletion: HashMap<u8, u64> = HashMap::new();
         for &i in &indices {
-            for (&q, &c) in &stats.phred_summary.correct_per_key[i] {
-                *qscore_correct.entry(q).or_insert(0) += c;
+            for (&q, &c) in &stats.phred_summary.observed_per_key[i] {
+                *qscore_observed.entry(q).or_insert(0) += c;
             }
-            for (&q, &e) in &stats.phred_summary.error_per_key[i] {
-                *qscore_error.entry(q).or_insert(0) += e;
+            for (&q, &c) in &stats.phred_summary.substitution_per_key[i] {
+                *qscore_substitution.entry(q).or_insert(0) += c;
+            }
+            for (&q, &c) in &stats.phred_summary.insertion_per_key[i] {
+                *qscore_insertion.entry(q).or_insert(0) += c;
+            }
+            for (&q, &c) in &stats.phred_summary.deletion_per_key[i] {
+                *qscore_deletion.entry(q).or_insert(0) += c;
             }
         }
 
-        let mut qscores: Vec<u8> = qscore_correct.keys()
-            .chain(qscore_error.keys())
-            .cloned()
-            .collect();
+        let mut qscores: Vec<u8> = qscore_observed.keys().cloned().collect();
         qscores.sort_unstable();
         qscores.dedup();
 
@@ -802,21 +811,30 @@ impl ErrorAnalyzer {
         let mut bootstrap_rates: HashMap<u8, Vec<f64>> = qscores.iter().map(|&q| (q, Vec::new())).collect();
         for _ in 0..self.args.num_experiments {
             let sample = Self::random_subsample_with_replacement(&indices, indices.len());
-            let mut c_sample: HashMap<u8, u64> = HashMap::new();
-            let mut e_sample: HashMap<u8, u64> = HashMap::new();
+            let mut obs_sample: HashMap<u8, u64> = HashMap::new();
+            let mut s_sample: HashMap<u8, u64> = HashMap::new();
+            let mut ins_sample: HashMap<u8, u64> = HashMap::new();
+            let mut del_sample: HashMap<u8, u64> = HashMap::new();
             for &i in &sample {
-                for (&q, &c) in &stats.phred_summary.correct_per_key[i] {
-                    *c_sample.entry(q).or_insert(0) += c;
+                for (&q, &c) in &stats.phred_summary.observed_per_key[i] {
+                    *obs_sample.entry(q).or_insert(0) += c;
                 }
-                for (&q, &e) in &stats.phred_summary.error_per_key[i] {
-                    *e_sample.entry(q).or_insert(0) += e;
+                for (&q, &c) in &stats.phred_summary.substitution_per_key[i] {
+                    *s_sample.entry(q).or_insert(0) += c;
+                }
+                for (&q, &c) in &stats.phred_summary.insertion_per_key[i] {
+                    *ins_sample.entry(q).or_insert(0) += c;
+                }
+                for (&q, &c) in &stats.phred_summary.deletion_per_key[i] {
+                    *del_sample.entry(q).or_insert(0) += c;
                 }
             }
             for &q in &qscores {
-                let c = *c_sample.get(&q).unwrap_or(&0);
-                let e = *e_sample.get(&q).unwrap_or(&0);
-                let total = c + e;
-                let rate = if total > 0 { e as f64 / total as f64 } else { 0.0 };
+                let obs = *obs_sample.get(&q).unwrap_or(&0);
+                let e = s_sample.get(&q).unwrap_or(&0)
+                      + ins_sample.get(&q).unwrap_or(&0)
+                      + del_sample.get(&q).unwrap_or(&0);
+                let rate = if obs > 0 { e as f64 / obs as f64 } else { 0.0 };
                 bootstrap_rates.get_mut(&q).unwrap().push(rate);
             }
         }
@@ -824,10 +842,12 @@ impl ErrorAnalyzer {
         // Build result with point estimates and CI
         let mut result = Vec::new();
         for &q in &qscores {
-            let correct = *qscore_correct.get(&q).unwrap_or(&0);
-            let error   = *qscore_error.get(&q).unwrap_or(&0);
-            let total   = correct + error;
-            let error_rate = if total > 0 { error as f64 / total as f64 } else { 0.0 };
+            let observed     = *qscore_observed.get(&q).unwrap_or(&0);
+            let substitution = *qscore_substitution.get(&q).unwrap_or(&0);
+            let insertion    = *qscore_insertion.get(&q).unwrap_or(&0);
+            let deletion     = *qscore_deletion.get(&q).unwrap_or(&0);
+            let error = substitution + insertion + deletion;
+            let error_rate = if observed > 0 { error as f64 / observed as f64 } else { 0.0 };
 
             let mut rates = bootstrap_rates[&q].clone();
             rates.sort_by(f64::total_cmp);
@@ -835,7 +855,16 @@ impl ErrorAnalyzer {
             let lower = if n > 0 { rates[(n as f64 * 0.05) as usize] } else { 0.0 };
             let upper = if n > 0 { rates[((n as f64 * 0.95) as usize).min(n - 1)] } else { 0.0 };
 
-            result.push(QscoreCalibration { qscore: q, num_correct: correct, num_error: error, error_rate, ci_lower: lower, ci_upper: upper });
+            result.push(QscoreCalibration {
+                qscore: q,
+                num_observed: observed,
+                num_substitution: substitution,
+                num_insertion: insertion,
+                num_deletion: deletion,
+                error_rate,
+                ci_lower: lower,
+                ci_upper: upper,
+            });
         }
         result
     }
@@ -850,49 +879,69 @@ impl ErrorAnalyzer {
             (0..stats.error_summary.consensus_counts.len()).collect()
         };
 
-        let mut correct_from_start: HashMap<u32, u64> = HashMap::new();
-        let mut correct_from_end: HashMap<u32, u64> = HashMap::new();
-        let mut error_from_start: HashMap<u32, u64> = HashMap::new();
-        let mut error_from_end: HashMap<u32, u64> = HashMap::new();
+        let mut observed_from_start: HashMap<u32, u64> = HashMap::new();
+        let mut observed_from_end: HashMap<u32, u64> = HashMap::new();
+        let mut substitution_from_start: HashMap<u32, u64> = HashMap::new();
+        let mut substitution_from_end: HashMap<u32, u64> = HashMap::new();
+        let mut insertion_from_start: HashMap<u32, u64> = HashMap::new();
+        let mut insertion_from_end: HashMap<u32, u64> = HashMap::new();
+        let mut deletion_from_start: HashMap<u32, u64> = HashMap::new();
+        let mut deletion_from_end: HashMap<u32, u64> = HashMap::new();
 
         for &i in &indices {
-            for (&pos, &c) in &stats.read_position_summary.correct_from_start_per_key[i] {
-                *correct_from_start.entry(pos).or_insert(0) += c;
+            for (&pos, &c) in &stats.read_position_summary.observed_from_start_per_key[i] {
+                *observed_from_start.entry(pos).or_insert(0) += c;
             }
-            for (&pos, &c) in &stats.read_position_summary.correct_from_end_per_key[i] {
-                *correct_from_end.entry(pos).or_insert(0) += c;
+            for (&pos, &c) in &stats.read_position_summary.observed_from_end_per_key[i] {
+                *observed_from_end.entry(pos).or_insert(0) += c;
             }
-            for (&pos, &e) in &stats.read_position_summary.error_from_start_per_key[i] {
-                *error_from_start.entry(pos).or_insert(0) += e;
+            for (&pos, &c) in &stats.read_position_summary.substitution_from_start_per_key[i] {
+                *substitution_from_start.entry(pos).or_insert(0) += c;
             }
-            for (&pos, &e) in &stats.read_position_summary.error_from_end_per_key[i] {
-                *error_from_end.entry(pos).or_insert(0) += e;
+            for (&pos, &c) in &stats.read_position_summary.substitution_from_end_per_key[i] {
+                *substitution_from_end.entry(pos).or_insert(0) += c;
+            }
+            for (&pos, &c) in &stats.read_position_summary.insertion_from_start_per_key[i] {
+                *insertion_from_start.entry(pos).or_insert(0) += c;
+            }
+            for (&pos, &c) in &stats.read_position_summary.insertion_from_end_per_key[i] {
+                *insertion_from_end.entry(pos).or_insert(0) += c;
+            }
+            for (&pos, &c) in &stats.read_position_summary.deletion_from_start_per_key[i] {
+                *deletion_from_start.entry(pos).or_insert(0) += c;
+            }
+            for (&pos, &c) in &stats.read_position_summary.deletion_from_end_per_key[i] {
+                *deletion_from_end.entry(pos).or_insert(0) += c;
             }
         }
 
         let mut result = Vec::new();
 
-        let mut start_positions: Vec<u32> = correct_from_start.keys().chain(error_from_start.keys()).copied().collect();
+        let mut start_positions: Vec<u32> = observed_from_start.keys().copied().collect();
         start_positions.sort_unstable();
         start_positions.dedup();
         for pos in start_positions {
             result.push(ReadPositionCalibration {
                 index: pos,
                 from_start: true,
-                num_correct: *correct_from_start.get(&pos).unwrap_or(&0),
-                num_error: *error_from_start.get(&pos).unwrap_or(&0),
+                num_observed: *observed_from_start.get(&pos).unwrap_or(&0),
+                num_substitution: *substitution_from_start.get(&pos).unwrap_or(&0),
+                num_insertion: *insertion_from_start.get(&pos).unwrap_or(&0),
+                num_deletion: *deletion_from_start.get(&pos).unwrap_or(&0),
             });
         }
 
-        let mut end_positions: Vec<u32> = correct_from_end.keys().chain(error_from_end.keys()).copied().collect();
+        let mut end_positions: Vec<u32> = observed_from_end.keys().copied().collect();
         end_positions.sort_unstable();
         end_positions.dedup();
         for pos in end_positions {
             result.push(ReadPositionCalibration {
                 index: pos,
                 from_start: false,
-                num_correct: *correct_from_end.get(&pos).unwrap_or(&0),
-                num_error: *error_from_end.get(&pos).unwrap_or(&0),
+                num_observed: *observed_from_end.get(&pos).unwrap_or(&0),
+                num_substitution: *substitution_from_end.get(&pos).unwrap_or(&0),
+                num_insertion: *insertion_from_end.get(&pos).unwrap_or(&0),
+                num_deletion: *deletion_from_end.get(&pos).unwrap_or(&0),
             });
         }
 

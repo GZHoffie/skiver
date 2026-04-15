@@ -266,8 +266,8 @@ impl KVmerSet {
                 keys.push(*key);
                 consensus_values.push(max_value);
                 error_spectrum.update(error_summary.error_counts_per_key.last().unwrap().clone(), error_summary.forward_error_counts_per_key.last().unwrap().clone());
-                phred_summary.update(max_value, self.value_size, value_map, first_base_only);
-                read_position_summary.update(max_value, self.value_size, value_map, first_base_only);
+                phred_summary.update(max_value, self.value_size, self.bidirectional, value_map, first_base_only);
+                read_position_summary.update(max_value, self.value_size, self.bidirectional, value_map, first_base_only);
             }
         }
 
@@ -323,8 +323,8 @@ impl KVmerSet {
                 keys.push(*key);
                 consensus_values.push(consensus_value);
                 error_spectrum.update(error_summary.error_counts_per_key.last().unwrap().clone(), error_summary.forward_error_counts_per_key.last().unwrap().clone());
-                phred_summary.update(consensus_value, self.value_size, value_map, first_base_only);
-                read_position_summary.update(consensus_value, self.value_size, value_map, first_base_only);
+                phred_summary.update(consensus_value, self.value_size, self.bidirectional, value_map, first_base_only);
+                read_position_summary.update(consensus_value, self.value_size, self.bidirectional, value_map, first_base_only);
             }
         }
 

@@ -313,94 +313,187 @@ impl ErrorSpectrumSummary {
     }
 }
 
-/// Phred quality-score calibration statistics.
-/// Corresponds to `KVmerStats` fields: `qscore_correct`, `qscore_error`,
-/// `qscore_correct_per_key`, `qscore_error_per_key`.
+/// Phred quality-score calibration statistics broken down by error type.
+/// `observed` counts every quality-score occurrence across all values (consensus + neighbors).
+/// `substitution`, `insertion`, `deletion` count only the neighbor observations by type.
 pub struct PhredScoreSummary {
-    pub correct: HashMap<u8, u64>,
-    pub error: HashMap<u8, u64>,
-    pub correct_per_key: Vec<HashMap<u8, u64>>,
-    pub error_per_key: Vec<HashMap<u8, u64>>,
+    pub observed: HashMap<u8, u64>,
+    pub substitution: HashMap<u8, u64>,
+    pub insertion: HashMap<u8, u64>,
+    pub deletion: HashMap<u8, u64>,
+    pub observed_per_key: Vec<HashMap<u8, u64>>,
+    pub substitution_per_key: Vec<HashMap<u8, u64>>,
+    pub insertion_per_key: Vec<HashMap<u8, u64>>,
+    pub deletion_per_key: Vec<HashMap<u8, u64>>,
 }
 
 impl PhredScoreSummary {
     pub fn new() -> Self {
         PhredScoreSummary {
-            correct: HashMap::new(),
-            error: HashMap::new(),
-            correct_per_key: Vec::new(),
-            error_per_key: Vec::new(),
+            observed: HashMap::new(),
+            substitution: HashMap::new(),
+            insertion: HashMap::new(),
+            deletion: HashMap::new(),
+            observed_per_key: Vec::new(),
+            substitution_per_key: Vec::new(),
+            insertion_per_key: Vec::new(),
+            deletion_per_key: Vec::new(),
         }
     }
 
-    /// Accumulate one key's Phred calibration data.
-    /// If `first_base_only` is true, only the first base of each value is considered.
-    pub fn update(&mut self, consensus: u64, value_size: u8, value_map: &HashMap<u64, Vec<ValueInfo>>, first_base_only: bool) {
-        let mut key_correct: HashMap<u8, u64> = HashMap::new();
-        let mut key_error: HashMap<u8, u64> = HashMap::new();
+    /// Accumulate one key's Phred calibration data using edit-distance-1 neighbors.
+    /// Every value (consensus and neighbors alike) contributes its quality score to `observed`.
+    /// Neighbor values additionally increment the appropriate error-type bucket.
+    /// For consensus values every base position (or just position 0 when `first_base_only`) is
+    /// recorded. For neighbor values the quality at the neighbor's position (right-indexed;
+    /// converted to left-indexed for `qual`) is used; position 0 when `first_base_only` is set.
+    pub fn update(
+        &mut self,
+        consensus: u64,
+        value_size: u8,
+        bidirectional: bool,
+        value_map: &HashMap<u64, Vec<ValueInfo>>,
+        first_base_only: bool,
+    ) {
+        let neighbors = _get_neighbors(consensus, value_size, bidirectional);
+
+        let mut key_observed: HashMap<u8, u64> = HashMap::new();
+        let mut key_substitution: HashMap<u8, u64> = HashMap::new();
+        let mut key_insertion: HashMap<u8, u64> = HashMap::new();
+        let mut key_deletion: HashMap<u8, u64> = HashMap::new();
+
         for (value, info_list) in value_map {
-            for info in info_list {
-                if info.qual.is_empty() {
-                    continue;
+            if *value == consensus {
+                for info in info_list {
+                    if info.qual.is_empty() { continue; }
+                    let range = if first_base_only { 0..1 } else { 0..value_size as usize };
+                    for p in range {
+                        let phred = info.qual[p].saturating_sub(33);
+                        *key_observed.entry(phred).or_insert(0) += 1;
+                    }
                 }
-                let range = if first_base_only { 0..1 } else { 0..value_size as usize };
-                for p in range {
-                    let bit_shift = 2 * (value_size as usize - 1 - p);
-                    let value_base     = (value     >> bit_shift) & 0b11;
-                    let consensus_base = (consensus >> bit_shift) & 0b11;
-                    let phred = info.qual[p].saturating_sub(33);
-                    if value_base == consensus_base {
-                        *key_correct.entry(phred).or_insert(0) += 1;
-                    } else {
-                        *key_error.entry(phred).or_insert(0) += 1;
-                        break;
+            } else if let Some(ni) = neighbors.get(value) {
+                // ni.position is right-indexed (0 = LSB); convert to left-indexed qual offset
+                let qual_idx = if first_base_only {
+                    0
+                } else {
+                    (value_size as usize).saturating_sub(1 + ni.position as usize)
+                };
+                for info in info_list {
+                    if info.qual.is_empty() { continue; }
+                    if qual_idx < info.qual.len() {
+                        let phred = info.qual[qual_idx].saturating_sub(33);
+                        *key_observed.entry(phred).or_insert(0) += 1;
+                        match ni.op {
+                            EditOperation::AC | EditOperation::AG | EditOperation::AT |
+                            EditOperation::CA | EditOperation::CG | EditOperation::CT |
+                            EditOperation::GA | EditOperation::GC | EditOperation::GT |
+                            EditOperation::TA | EditOperation::TC | EditOperation::TG => {
+                                *key_substitution.entry(phred).or_insert(0) += 1;
+                            }
+                            EditOperation::_A | EditOperation::_C |
+                            EditOperation::_G | EditOperation::_T => {
+                                *key_insertion.entry(phred).or_insert(0) += 1;
+                            }
+                            EditOperation::A_ | EditOperation::C_ |
+                            EditOperation::G_ | EditOperation::T_ => {
+                                *key_deletion.entry(phred).or_insert(0) += 1;
+                            }
+                            EditOperation::AMBIGUOUS => {}
+                        }
                     }
                 }
             }
         }
-        for (&q, &c) in &key_correct { *self.correct.entry(q).or_insert(0) += c; }
-        for (&q, &e) in &key_error   { *self.error.entry(q).or_insert(0)   += e; }
-        self.correct_per_key.push(key_correct);
-        self.error_per_key.push(key_error);
+
+        for (&q, &c) in &key_observed     { *self.observed.entry(q).or_insert(0)      += c; }
+        for (&q, &c) in &key_substitution { *self.substitution.entry(q).or_insert(0)  += c; }
+        for (&q, &c) in &key_insertion    { *self.insertion.entry(q).or_insert(0)      += c; }
+        for (&q, &c) in &key_deletion     { *self.deletion.entry(q).or_insert(0)       += c; }
+        self.observed_per_key.push(key_observed);
+        self.substitution_per_key.push(key_substitution);
+        self.insertion_per_key.push(key_insertion);
+        self.deletion_per_key.push(key_deletion);
     }
 }
 
-/// Read-position error calibration statistics.
-/// Stores per-key counts of correct/erroneous bases indexed by position from the
-/// start or end of the read.
+/// Read-position error calibration statistics broken down by error type.
+/// `observed` counts every read-position occurrence across all values (consensus + neighbors).
+/// `substitution`, `insertion`, `deletion` count only the neighbor observations by type.
 pub struct ReadPositionSummary {
-    pub correct_from_start_per_key: Vec<HashMap<u32, u64>>,
-    pub correct_from_end_per_key: Vec<HashMap<u32, u64>>,
-    pub error_from_start_per_key: Vec<HashMap<u32, u64>>,
-    pub error_from_end_per_key: Vec<HashMap<u32, u64>>,
+    pub observed_from_start_per_key: Vec<HashMap<u32, u64>>,
+    pub observed_from_end_per_key: Vec<HashMap<u32, u64>>,
+    pub substitution_from_start_per_key: Vec<HashMap<u32, u64>>,
+    pub substitution_from_end_per_key: Vec<HashMap<u32, u64>>,
+    pub insertion_from_start_per_key: Vec<HashMap<u32, u64>>,
+    pub insertion_from_end_per_key: Vec<HashMap<u32, u64>>,
+    pub deletion_from_start_per_key: Vec<HashMap<u32, u64>>,
+    pub deletion_from_end_per_key: Vec<HashMap<u32, u64>>,
 }
 
 impl ReadPositionSummary {
     pub fn new() -> Self {
         ReadPositionSummary {
-            correct_from_start_per_key: Vec::new(),
-            correct_from_end_per_key: Vec::new(),
-            error_from_start_per_key: Vec::new(),
-            error_from_end_per_key: Vec::new(),
+            observed_from_start_per_key: Vec::new(),
+            observed_from_end_per_key: Vec::new(),
+            substitution_from_start_per_key: Vec::new(),
+            substitution_from_end_per_key: Vec::new(),
+            insertion_from_start_per_key: Vec::new(),
+            insertion_from_end_per_key: Vec::new(),
+            deletion_from_start_per_key: Vec::new(),
+            deletion_from_end_per_key: Vec::new(),
         }
     }
 
-    /// If `first_base_only` is true, only the first base of each value is considered.
-    pub fn update(&mut self, consensus: u64, value_size: u8, value_map: &HashMap<u64, Vec<ValueInfo>>, first_base_only: bool) {
-        let mut correct_from_start: HashMap<u32, u64> = HashMap::new();
-        let mut correct_from_end: HashMap<u32, u64> = HashMap::new();
-        let mut error_from_start: HashMap<u32, u64> = HashMap::new();
-        let mut error_from_end: HashMap<u32, u64> = HashMap::new();
+    /// Accumulate one key's read-position calibration data using edit-distance-1 neighbors.
+    /// Every value (consensus and neighbors alike) contributes its read position to `observed`.
+    /// Neighbor values additionally increment the appropriate error-type bucket.
+    /// `first_base_only` restricts consensus to position 0 and uses position 0 for errors.
+    pub fn update(
+        &mut self,
+        consensus: u64,
+        value_size: u8,
+        bidirectional: bool,
+        value_map: &HashMap<u64, Vec<ValueInfo>>,
+        first_base_only: bool,
+    ) {
+        let neighbors = _get_neighbors(consensus, value_size, bidirectional);
+
+        let mut observed_from_start: HashMap<u32, u64> = HashMap::new();
+        let mut observed_from_end: HashMap<u32, u64> = HashMap::new();
+        let mut substitution_from_start: HashMap<u32, u64> = HashMap::new();
+        let mut substitution_from_end: HashMap<u32, u64> = HashMap::new();
+        let mut insertion_from_start: HashMap<u32, u64> = HashMap::new();
+        let mut insertion_from_end: HashMap<u32, u64> = HashMap::new();
+        let mut deletion_from_start: HashMap<u32, u64> = HashMap::new();
+        let mut deletion_from_end: HashMap<u32, u64> = HashMap::new();
+
         for (value, info_list) in value_map {
-            for info in info_list {
-                if info.qual.is_empty() {
-                    continue;
+            if *value == consensus {
+                for info in info_list {
+                    if info.qual.is_empty() { continue; }
+                    let range = if first_base_only { 0..1 } else { 0..value_size as usize };
+                    for p in range {
+                        let (pos_from_start, pos_from_end) = if info.is_forward {
+                            (info.start_index + p as u32,
+                             info.dist_to_read_end.saturating_sub(1 + p as u32))
+                        } else {
+                            (info.start_index.saturating_sub(p as u32),
+                             info.dist_to_read_end + p as u32)
+                        };
+                        *observed_from_start.entry(pos_from_start).or_insert(0) += 1;
+                        *observed_from_end.entry(pos_from_end).or_insert(0) += 1;
+                    }
                 }
-                let range = if first_base_only { 0..1 } else { 0..value_size as usize };
-                for p in range {
-                    let bit_shift = 2 * (value_size as usize - 1 - p);
-                    let value_base     = (value     >> bit_shift) & 0b11;
-                    let consensus_base = (consensus >> bit_shift) & 0b11;
+            } else if let Some(ni) = neighbors.get(value) {
+                // ni.position is right-indexed; convert to left-indexed position p
+                let p = if first_base_only {
+                    0usize
+                } else {
+                    (value_size as usize).saturating_sub(1 + ni.position as usize)
+                };
+                for info in info_list {
+                    if info.qual.is_empty() { continue; }
                     let (pos_from_start, pos_from_end) = if info.is_forward {
                         (info.start_index + p as u32,
                          info.dist_to_read_end.saturating_sub(1 + p as u32))
@@ -408,21 +501,57 @@ impl ReadPositionSummary {
                         (info.start_index.saturating_sub(p as u32),
                          info.dist_to_read_end + p as u32)
                     };
-                    if value_base == consensus_base {
-                        *correct_from_start.entry(pos_from_start).or_insert(0) += 1;
-                        *correct_from_end.entry(pos_from_end).or_insert(0) += 1;
-                    } else {
-                        *error_from_start.entry(pos_from_start).or_insert(0) += 1;
-                        *error_from_end.entry(pos_from_end).or_insert(0) += 1;
-                        break;
+                    *observed_from_start.entry(pos_from_start).or_insert(0) += 1;
+                    *observed_from_end.entry(pos_from_end).or_insert(0) += 1;
+                    match ni.op {
+                        EditOperation::AC | EditOperation::AG | EditOperation::AT |
+                        EditOperation::CA | EditOperation::CG | EditOperation::CT |
+                        EditOperation::GA | EditOperation::GC | EditOperation::GT |
+                        EditOperation::TA | EditOperation::TC | EditOperation::TG => {
+                            *substitution_from_start.entry(pos_from_start).or_insert(0) += 1;
+                            *substitution_from_end.entry(pos_from_end).or_insert(0) += 1;
+                        }
+                        EditOperation::_A | EditOperation::_C |
+                        EditOperation::_G | EditOperation::_T => {
+                            *insertion_from_start.entry(pos_from_start).or_insert(0) += 1;
+                            *insertion_from_end.entry(pos_from_end).or_insert(0) += 1;
+                        }
+                        EditOperation::A_ | EditOperation::C_ |
+                        EditOperation::G_ | EditOperation::T_ => {
+                            // Attribute deletion to both the previous-base and next-base context
+                            // positions (the flanking read positions).
+                            let p_prev = if first_base_only { 0 } else {
+                                (value_size as usize).saturating_sub(1 + ni.prev_base as usize)
+                            };
+                            let p_next = if first_base_only { 0 } else {
+                                (value_size as usize).saturating_sub(1 + ni.next_base as usize)
+                            };
+                            for &dp in &[p_prev, p_next] {
+                                let (dps, dpe) = if info.is_forward {
+                                    (info.start_index + dp as u32,
+                                     info.dist_to_read_end.saturating_sub(1 + dp as u32))
+                                } else {
+                                    (info.start_index.saturating_sub(dp as u32),
+                                     info.dist_to_read_end + dp as u32)
+                                };
+                                *deletion_from_start.entry(dps).or_insert(0) += 1;
+                                *deletion_from_end.entry(dpe).or_insert(0) += 1;
+                            }
+                        }
+                        EditOperation::AMBIGUOUS => {}
                     }
                 }
             }
         }
-        self.correct_from_start_per_key.push(correct_from_start);
-        self.correct_from_end_per_key.push(correct_from_end);
-        self.error_from_start_per_key.push(error_from_start);
-        self.error_from_end_per_key.push(error_from_end);
+
+        self.observed_from_start_per_key.push(observed_from_start);
+        self.observed_from_end_per_key.push(observed_from_end);
+        self.substitution_from_start_per_key.push(substitution_from_start);
+        self.substitution_from_end_per_key.push(substitution_from_end);
+        self.insertion_from_start_per_key.push(insertion_from_start);
+        self.insertion_from_end_per_key.push(insertion_from_end);
+        self.deletion_from_start_per_key.push(deletion_from_start);
+        self.deletion_from_end_per_key.push(deletion_from_end);
     }
 }
 
@@ -432,41 +561,55 @@ impl ReadPositionSummary {
         let all: Vec<usize>;
         let indices = match indices {
             Some(idx) => idx,
-            None => { all = (0..self.correct_from_start_per_key.len()).collect(); &all }
+            None => { all = (0..self.observed_from_start_per_key.len()).collect(); &all }
         };
-        let mut correct_from_start: HashMap<u32, u64> = HashMap::new();
-        let mut correct_from_end: HashMap<u32, u64> = HashMap::new();
-        let mut error_from_start: HashMap<u32, u64> = HashMap::new();
-        let mut error_from_end: HashMap<u32, u64> = HashMap::new();
+        let mut observed_from_start: HashMap<u32, u64> = HashMap::new();
+        let mut observed_from_end: HashMap<u32, u64> = HashMap::new();
+        let mut substitution_from_start: HashMap<u32, u64> = HashMap::new();
+        let mut substitution_from_end: HashMap<u32, u64> = HashMap::new();
+        let mut insertion_from_start: HashMap<u32, u64> = HashMap::new();
+        let mut insertion_from_end: HashMap<u32, u64> = HashMap::new();
+        let mut deletion_from_start: HashMap<u32, u64> = HashMap::new();
+        let mut deletion_from_end: HashMap<u32, u64> = HashMap::new();
 
         for &i in indices {
-            for (&pos, &c) in &self.correct_from_start_per_key[i] { *correct_from_start.entry(pos).or_insert(0) += c; }
-            for (&pos, &c) in &self.correct_from_end_per_key[i]   { *correct_from_end.entry(pos).or_insert(0) += c; }
-            for (&pos, &e) in &self.error_from_start_per_key[i]   { *error_from_start.entry(pos).or_insert(0) += e; }
-            for (&pos, &e) in &self.error_from_end_per_key[i]     { *error_from_end.entry(pos).or_insert(0) += e; }
+            for (&pos, &c) in &self.observed_from_start_per_key[i]     { *observed_from_start.entry(pos).or_insert(0)     += c; }
+            for (&pos, &c) in &self.observed_from_end_per_key[i]       { *observed_from_end.entry(pos).or_insert(0)       += c; }
+            for (&pos, &c) in &self.substitution_from_start_per_key[i] { *substitution_from_start.entry(pos).or_insert(0) += c; }
+            for (&pos, &c) in &self.substitution_from_end_per_key[i]   { *substitution_from_end.entry(pos).or_insert(0)   += c; }
+            for (&pos, &c) in &self.insertion_from_start_per_key[i]    { *insertion_from_start.entry(pos).or_insert(0)    += c; }
+            for (&pos, &c) in &self.insertion_from_end_per_key[i]      { *insertion_from_end.entry(pos).or_insert(0)      += c; }
+            for (&pos, &c) in &self.deletion_from_start_per_key[i]     { *deletion_from_start.entry(pos).or_insert(0)     += c; }
+            for (&pos, &c) in &self.deletion_from_end_per_key[i]       { *deletion_from_end.entry(pos).or_insert(0)       += c; }
         }
 
         let mut out = String::new();
-        writeln!(out, "index,from_start,num_correct,num_error,error_rate").unwrap();
+        writeln!(out, "index,from_start,num_observed,num_substitution,num_insertion,num_deletion,error_rate").unwrap();
 
-        let mut start_positions: Vec<u32> = correct_from_start.keys().chain(error_from_start.keys()).copied().collect();
+        let mut start_positions: Vec<u32> = observed_from_start.keys().copied().collect();
         start_positions.sort();
         start_positions.dedup();
         for pos in start_positions {
-            let nc = correct_from_start.get(&pos).copied().unwrap_or(0);
-            let ne = error_from_start.get(&pos).copied().unwrap_or(0);
-            let error_rate = if nc + ne > 0 { ne as f64 / (nc + ne) as f64 } else { 0.0 };
-            writeln!(out, "{},true,{},{},{:.6}", pos, nc, ne, error_rate).unwrap();
+            let no = observed_from_start.get(&pos).copied().unwrap_or(0);
+            let ns = substitution_from_start.get(&pos).copied().unwrap_or(0);
+            let ni = insertion_from_start.get(&pos).copied().unwrap_or(0);
+            let nd = deletion_from_start.get(&pos).copied().unwrap_or(0);
+            let ne = ns + ni + nd;
+            let error_rate = if no > 0 { ne as f64 / no as f64 } else { 0.0 };
+            writeln!(out, "{},true,{},{},{},{},{:.6}", pos, no, ns, ni, nd, error_rate).unwrap();
         }
 
-        let mut end_positions: Vec<u32> = correct_from_end.keys().chain(error_from_end.keys()).copied().collect();
+        let mut end_positions: Vec<u32> = observed_from_end.keys().copied().collect();
         end_positions.sort();
         end_positions.dedup();
         for pos in end_positions {
-            let nc = correct_from_end.get(&pos).copied().unwrap_or(0);
-            let ne = error_from_end.get(&pos).copied().unwrap_or(0);
-            let error_rate = if nc + ne > 0 { ne as f64 / (nc + ne) as f64 } else { 0.0 };
-            writeln!(out, "{},false,{},{},{:.6}", pos, nc, ne, error_rate).unwrap();
+            let no = observed_from_end.get(&pos).copied().unwrap_or(0);
+            let ns = substitution_from_end.get(&pos).copied().unwrap_or(0);
+            let ni = insertion_from_end.get(&pos).copied().unwrap_or(0);
+            let nd = deletion_from_end.get(&pos).copied().unwrap_or(0);
+            let ne = ns + ni + nd;
+            let error_rate = if no > 0 { ne as f64 / no as f64 } else { 0.0 };
+            writeln!(out, "{},false,{},{},{},{},{:.6}", pos, no, ns, ni, nd, error_rate).unwrap();
         }
 
         out
@@ -479,26 +622,34 @@ impl PhredScoreSummary {
         let all: Vec<usize>;
         let indices = match indices {
             Some(idx) => idx,
-            None => { all = (0..self.correct_per_key.len()).collect(); &all }
+            None => { all = (0..self.observed_per_key.len()).collect(); &all }
         };
-        let mut correct: HashMap<u8, u64> = HashMap::new();
-        let mut error: HashMap<u8, u64> = HashMap::new();
+        let mut observed: HashMap<u8, u64> = HashMap::new();
+        let mut substitution: HashMap<u8, u64> = HashMap::new();
+        let mut insertion: HashMap<u8, u64> = HashMap::new();
+        let mut deletion: HashMap<u8, u64> = HashMap::new();
         for &i in indices {
-            for (&q, &c) in &self.correct_per_key[i] { *correct.entry(q).or_insert(0) += c; }
-            for (&q, &e) in &self.error_per_key[i]   { *error.entry(q).or_insert(0) += e; }
+            for (&q, &c) in &self.observed_per_key[i]     { *observed.entry(q).or_insert(0)      += c; }
+            for (&q, &c) in &self.substitution_per_key[i] { *substitution.entry(q).or_insert(0)  += c; }
+            for (&q, &c) in &self.insertion_per_key[i]    { *insertion.entry(q).or_insert(0)      += c; }
+            for (&q, &c) in &self.deletion_per_key[i]     { *deletion.entry(q).or_insert(0)       += c; }
         }
-        let mut scores: Vec<u8> = correct.keys().chain(error.keys()).copied().collect();
+        let mut scores: Vec<u8> = observed.keys().copied().collect();
         scores.sort();
         scores.dedup();
         let mut out = String::new();
-        writeln!(out, "qscore,empirical_qscore,num_correct,num_error,error_rate").unwrap();
+        writeln!(out, "qscore,empirical_qscore,num_observed,num_substitution,num_insertion,num_deletion,error_rate").unwrap();
         for q in scores {
-            let num_correct = correct.get(&q).copied().unwrap_or(0);
-            let num_error   = error.get(&q).copied().unwrap_or(0);
-            let total = num_correct + num_error;
-            let error_rate = if total > 0 { num_error as f64 / total as f64 } else { 0.0 };
+            let num_observed     = observed.get(&q).copied().unwrap_or(0);
+            let num_substitution = substitution.get(&q).copied().unwrap_or(0);
+            let num_insertion    = insertion.get(&q).copied().unwrap_or(0);
+            let num_deletion     = deletion.get(&q).copied().unwrap_or(0);
+            let num_error = num_substitution + num_insertion + num_deletion;
+            let error_rate = if num_observed > 0 { num_error as f64 / num_observed as f64 } else { 0.0 };
             let empirical_q = if error_rate > 0.0 { -10.0 * error_rate.log10() } else { f64::INFINITY };
-            writeln!(out, "{},{:.4},{},{},{:.6}", q, empirical_q, num_correct, num_error, error_rate).unwrap();
+            writeln!(out, "{},{:.4},{},{},{},{},{:.6}",
+                q, empirical_q, num_observed, num_substitution, num_insertion, num_deletion, error_rate
+            ).unwrap();
         }
         out
     }
