@@ -342,18 +342,15 @@ impl PhredScoreSummary {
     }
 
     /// Accumulate one key's Phred calibration data using edit-distance-1 neighbors.
-    /// Every value (consensus and neighbors alike) contributes its quality score to `observed`.
-    /// Neighbor values additionally increment the appropriate error-type bucket.
-    /// For consensus values every base position (or just position 0 when `first_base_only`) is
-    /// recorded. For neighbor values the quality at the neighbor's position (right-indexed;
-    /// converted to left-indexed for `qual`) is used; position 0 when `first_base_only` is set.
+    /// Every value (consensus and neighbors alike) contributes the quality score of every base
+    /// position to `observed`. Neighbor values additionally increment the appropriate error-type
+    /// bucket at the quality score of the specific error position (ni.position, right-indexed).
     pub fn update(
         &mut self,
         consensus: u64,
         value_size: u8,
         bidirectional: bool,
         value_map: &HashMap<u64, Vec<ValueInfo>>,
-        first_base_only: bool,
     ) {
         let neighbors = _get_neighbors(consensus, value_size, bidirectional);
 
@@ -366,24 +363,24 @@ impl PhredScoreSummary {
             if *value == consensus {
                 for info in info_list {
                     if info.qual.is_empty() { continue; }
-                    let range = if first_base_only { 0..1 } else { 0..value_size as usize };
-                    for p in range {
+                    for p in 0..value_size as usize {
                         let phred = info.qual[p].saturating_sub(33);
                         *key_observed.entry(phred).or_insert(0) += 1;
                     }
                 }
             } else if let Some(ni) = neighbors.get(value) {
                 // ni.position is right-indexed (0 = LSB); convert to left-indexed qual offset
-                let qual_idx = if first_base_only {
-                    0
-                } else {
-                    (value_size as usize).saturating_sub(1 + ni.position as usize)
-                };
+                let qual_idx = (value_size as usize).saturating_sub(1 + ni.position as usize);
                 for info in info_list {
                     if info.qual.is_empty() { continue; }
+                    // All base positions contribute to observed.
+                    for p in 0..value_size as usize {
+                        let phred = info.qual[p].saturating_sub(33);
+                        *key_observed.entry(phred).or_insert(0) += 1;
+                    }
+                    // Error type is recorded at the specific error position.
                     if qual_idx < info.qual.len() {
                         let phred = info.qual[qual_idx].saturating_sub(33);
-                        *key_observed.entry(phred).or_insert(0) += 1;
                         match ni.op {
                             EditOperation::AC | EditOperation::AG | EditOperation::AT |
                             EditOperation::CA | EditOperation::CG | EditOperation::CT |
@@ -446,16 +443,16 @@ impl ReadPositionSummary {
     }
 
     /// Accumulate one key's read-position calibration data using edit-distance-1 neighbors.
-    /// Every value (consensus and neighbors alike) contributes its read position to `observed`.
-    /// Neighbor values additionally increment the appropriate error-type bucket.
-    /// `first_base_only` restricts consensus to position 0 and uses position 0 for errors.
+    /// Every value (consensus and neighbors alike) contributes the read position of every base
+    /// to `observed`. Neighbor values additionally increment the appropriate error-type bucket
+    /// at the read position of the specific error position (ni.position, right-indexed).
+    /// Deletions are attributed to both the previous-base and next-base flanking positions.
     pub fn update(
         &mut self,
         consensus: u64,
         value_size: u8,
         bidirectional: bool,
         value_map: &HashMap<u64, Vec<ValueInfo>>,
-        first_base_only: bool,
     ) {
         let neighbors = _get_neighbors(consensus, value_size, bidirectional);
 
@@ -468,72 +465,60 @@ impl ReadPositionSummary {
         let mut deletion_from_start: HashMap<u32, u64> = HashMap::new();
         let mut deletion_from_end: HashMap<u32, u64> = HashMap::new();
 
+        // Helper: convert left-indexed position p and ValueInfo to read positions.
+        let read_pos = |info: &ValueInfo, p: usize| -> (u32, u32) {
+            if info.is_forward {
+                (info.start_index + p as u32,
+                 info.dist_to_read_end.saturating_sub(1 + p as u32))
+            } else {
+                (info.start_index.saturating_sub(p as u32),
+                 info.dist_to_read_end + p as u32)
+            }
+        };
+
         for (value, info_list) in value_map {
             if *value == consensus {
                 for info in info_list {
                     if info.qual.is_empty() { continue; }
-                    let range = if first_base_only { 0..1 } else { 0..value_size as usize };
-                    for p in range {
-                        let (pos_from_start, pos_from_end) = if info.is_forward {
-                            (info.start_index + p as u32,
-                             info.dist_to_read_end.saturating_sub(1 + p as u32))
-                        } else {
-                            (info.start_index.saturating_sub(p as u32),
-                             info.dist_to_read_end + p as u32)
-                        };
-                        *observed_from_start.entry(pos_from_start).or_insert(0) += 1;
-                        *observed_from_end.entry(pos_from_end).or_insert(0) += 1;
+                    for p in 0..value_size as usize {
+                        let (s, e) = read_pos(info, p);
+                        *observed_from_start.entry(s).or_insert(0) += 1;
+                        *observed_from_end.entry(e).or_insert(0) += 1;
                     }
                 }
             } else if let Some(ni) = neighbors.get(value) {
                 // ni.position is right-indexed; convert to left-indexed position p
-                let p = if first_base_only {
-                    0usize
-                } else {
-                    (value_size as usize).saturating_sub(1 + ni.position as usize)
-                };
+                let p = (value_size as usize).saturating_sub(1 + ni.position as usize);
                 for info in info_list {
                     if info.qual.is_empty() { continue; }
-                    let (pos_from_start, pos_from_end) = if info.is_forward {
-                        (info.start_index + p as u32,
-                         info.dist_to_read_end.saturating_sub(1 + p as u32))
-                    } else {
-                        (info.start_index.saturating_sub(p as u32),
-                         info.dist_to_read_end + p as u32)
-                    };
-                    *observed_from_start.entry(pos_from_start).or_insert(0) += 1;
-                    *observed_from_end.entry(pos_from_end).or_insert(0) += 1;
+                    // All base positions contribute to observed.
+                    for q in 0..value_size as usize {
+                        let (s, e) = read_pos(info, q);
+                        *observed_from_start.entry(s).or_insert(0) += 1;
+                        *observed_from_end.entry(e).or_insert(0) += 1;
+                    }
+                    // Error type is recorded at the specific error position.
+                    let (ps, pe) = read_pos(info, p);
                     match ni.op {
                         EditOperation::AC | EditOperation::AG | EditOperation::AT |
                         EditOperation::CA | EditOperation::CG | EditOperation::CT |
                         EditOperation::GA | EditOperation::GC | EditOperation::GT |
                         EditOperation::TA | EditOperation::TC | EditOperation::TG => {
-                            *substitution_from_start.entry(pos_from_start).or_insert(0) += 1;
-                            *substitution_from_end.entry(pos_from_end).or_insert(0) += 1;
+                            *substitution_from_start.entry(ps).or_insert(0) += 1;
+                            *substitution_from_end.entry(pe).or_insert(0) += 1;
                         }
                         EditOperation::_A | EditOperation::_C |
                         EditOperation::_G | EditOperation::_T => {
-                            *insertion_from_start.entry(pos_from_start).or_insert(0) += 1;
-                            *insertion_from_end.entry(pos_from_end).or_insert(0) += 1;
+                            *insertion_from_start.entry(ps).or_insert(0) += 1;
+                            *insertion_from_end.entry(pe).or_insert(0) += 1;
                         }
                         EditOperation::A_ | EditOperation::C_ |
                         EditOperation::G_ | EditOperation::T_ => {
-                            // Attribute deletion to both the previous-base and next-base context
-                            // positions (the flanking read positions).
-                            let p_prev = if first_base_only { 0 } else {
-                                (value_size as usize).saturating_sub(1 + ni.prev_base as usize)
-                            };
-                            let p_next = if first_base_only { 0 } else {
-                                (value_size as usize).saturating_sub(1 + ni.next_base as usize)
-                            };
+                            // Attribute deletion to both flanking positions.
+                            let p_prev = (value_size as usize).saturating_sub(1 + ni.prev_base as usize);
+                            let p_next = (value_size as usize).saturating_sub(1 + ni.next_base as usize);
                             for &dp in &[p_prev, p_next] {
-                                let (dps, dpe) = if info.is_forward {
-                                    (info.start_index + dp as u32,
-                                     info.dist_to_read_end.saturating_sub(1 + dp as u32))
-                                } else {
-                                    (info.start_index.saturating_sub(dp as u32),
-                                     info.dist_to_read_end + dp as u32)
-                                };
+                                let (dps, dpe) = read_pos(info, dp);
                                 *deletion_from_start.entry(dps).or_insert(0) += 1;
                                 *deletion_from_end.entry(dpe).or_insert(0) += 1;
                             }
@@ -556,7 +541,10 @@ impl ReadPositionSummary {
 }
 
 impl ReadPositionSummary {
-    pub fn to_csv(&self, indices: Option<&[usize]>) -> String {
+    /// `per_base_error_rate` is used for the same normalisation as `PhredScoreSummary::to_csv`:
+    /// start and end positions are normalised independently so that each direction's weighted
+    /// average of `normalized_error_rate` equals `per_base_error_rate`.
+    pub fn to_csv(&self, indices: Option<&[usize]>, per_base_error_rate: f64) -> String {
         use std::fmt::Write;
         let all: Vec<usize>;
         let indices = match indices {
@@ -583,8 +571,23 @@ impl ReadPositionSummary {
             for (&pos, &c) in &self.deletion_from_end_per_key[i]       { *deletion_from_end.entry(pos).or_insert(0)       += c; }
         }
 
+        // Compute normalisation scales for each direction independently.
+        let scale_for = |obs_map: &HashMap<u32, u64>,
+                         sub_map: &HashMap<u32, u64>,
+                         ins_map: &HashMap<u32, u64>,
+                         del_map: &HashMap<u32, u64>| -> f64 {
+            let total_obs: u64 = obs_map.values().sum();
+            let total_err: u64 = sub_map.values().sum::<u64>()
+                + ins_map.values().sum::<u64>()
+                + del_map.values().sum::<u64>();
+            let raw = if total_obs > 0 { total_err as f64 / total_obs as f64 } else { 0.0 };
+            if raw > 0.0 { per_base_error_rate / raw } else { 1.0 }
+        };
+        let scale_start = scale_for(&observed_from_start, &substitution_from_start, &insertion_from_start, &deletion_from_start);
+        let scale_end   = scale_for(&observed_from_end,   &substitution_from_end,   &insertion_from_end,   &deletion_from_end);
+
         let mut out = String::new();
-        writeln!(out, "index,from_start,num_observed,num_substitution,num_insertion,num_deletion,error_rate").unwrap();
+        writeln!(out, "index,from_start,num_observed,num_substitution,num_insertion,num_deletion,normalized_substitution_rate,normalized_insertion_rate,normalized_deletion_rate,normalized_error_rate").unwrap();
 
         let mut start_positions: Vec<u32> = observed_from_start.keys().copied().collect();
         start_positions.sort();
@@ -595,8 +598,14 @@ impl ReadPositionSummary {
             let ni = insertion_from_start.get(&pos).copied().unwrap_or(0);
             let nd = deletion_from_start.get(&pos).copied().unwrap_or(0);
             let ne = ns + ni + nd;
-            let error_rate = if no > 0 { ne as f64 / no as f64 } else { 0.0 };
-            writeln!(out, "{},true,{},{},{},{},{:.6}", pos, no, ns, ni, nd, error_rate).unwrap();
+            let (norm_sub, norm_ins, norm_del, norm_err) = if no > 0 {
+                (ns as f64 / no as f64 * scale_start,
+                 ni as f64 / no as f64 * scale_start,
+                 nd as f64 / no as f64 * scale_start,
+                 ne as f64 / no as f64 * scale_start)
+            } else { (0.0, 0.0, 0.0, 0.0) };
+            writeln!(out, "{},true,{},{},{},{},{:.6},{:.6},{:.6},{:.6}",
+                pos, no, ns, ni, nd, norm_sub, norm_ins, norm_del, norm_err).unwrap();
         }
 
         let mut end_positions: Vec<u32> = observed_from_end.keys().copied().collect();
@@ -608,8 +617,14 @@ impl ReadPositionSummary {
             let ni = insertion_from_end.get(&pos).copied().unwrap_or(0);
             let nd = deletion_from_end.get(&pos).copied().unwrap_or(0);
             let ne = ns + ni + nd;
-            let error_rate = if no > 0 { ne as f64 / no as f64 } else { 0.0 };
-            writeln!(out, "{},false,{},{},{},{},{:.6}", pos, no, ns, ni, nd, error_rate).unwrap();
+            let (norm_sub, norm_ins, norm_del, norm_err) = if no > 0 {
+                (ns as f64 / no as f64 * scale_end,
+                 ni as f64 / no as f64 * scale_end,
+                 nd as f64 / no as f64 * scale_end,
+                 ne as f64 / no as f64 * scale_end)
+            } else { (0.0, 0.0, 0.0, 0.0) };
+            writeln!(out, "{},false,{},{},{},{},{:.6},{:.6},{:.6},{:.6}",
+                pos, no, ns, ni, nd, norm_sub, norm_ins, norm_del, norm_err).unwrap();
         }
 
         out
@@ -617,7 +632,10 @@ impl ReadPositionSummary {
 }
 
 impl PhredScoreSummary {
-    pub fn to_csv(&self, indices: Option<&[usize]>) -> String {
+    /// `per_base_error_rate` is the global error rate from the hazard-ratio model
+    /// (i.e. `1 - exp(-lambda)`) used to normalise the per-qscore rates so that
+    /// `sum(normalized_error_rate * num_observed) / sum(num_observed) == per_base_error_rate`.
+    pub fn to_csv(&self, indices: Option<&[usize]>, per_base_error_rate: f64) -> String {
         use std::fmt::Write;
         let all: Vec<usize>;
         let indices = match indices {
@@ -629,26 +647,45 @@ impl PhredScoreSummary {
         let mut insertion: HashMap<u8, u64> = HashMap::new();
         let mut deletion: HashMap<u8, u64> = HashMap::new();
         for &i in indices {
-            for (&q, &c) in &self.observed_per_key[i]     { *observed.entry(q).or_insert(0)      += c; }
-            for (&q, &c) in &self.substitution_per_key[i] { *substitution.entry(q).or_insert(0)  += c; }
-            for (&q, &c) in &self.insertion_per_key[i]    { *insertion.entry(q).or_insert(0)      += c; }
-            for (&q, &c) in &self.deletion_per_key[i]     { *deletion.entry(q).or_insert(0)       += c; }
+            for (&q, &c) in &self.observed_per_key[i]     { *observed.entry(q).or_insert(0)     += c; }
+            for (&q, &c) in &self.substitution_per_key[i] { *substitution.entry(q).or_insert(0) += c; }
+            for (&q, &c) in &self.insertion_per_key[i]    { *insertion.entry(q).or_insert(0)    += c; }
+            for (&q, &c) in &self.deletion_per_key[i]     { *deletion.entry(q).or_insert(0)     += c; }
         }
+
+        // Compute the normalisation scale so that the weighted average of
+        // normalized_error_rate equals per_base_error_rate.
+        let total_observed: u64 = observed.values().sum();
+        let total_error: u64 = substitution.values().sum::<u64>()
+            + insertion.values().sum::<u64>()
+            + deletion.values().sum::<u64>();
+        let raw_aggregate_rate = if total_observed > 0 {
+            total_error as f64 / total_observed as f64
+        } else { 0.0 };
+        let scale = if raw_aggregate_rate > 0.0 {
+            per_base_error_rate / raw_aggregate_rate
+        } else { 1.0 };
+
         let mut scores: Vec<u8> = observed.keys().copied().collect();
         scores.sort();
         scores.dedup();
         let mut out = String::new();
-        writeln!(out, "qscore,empirical_qscore,num_observed,num_substitution,num_insertion,num_deletion,error_rate").unwrap();
+        writeln!(out, "qscore,empirical_qscore,num_observed,num_substitution,num_insertion,num_deletion,normalized_substitution_rate,normalized_insertion_rate,normalized_deletion_rate,normalized_error_rate").unwrap();
         for q in scores {
             let num_observed     = observed.get(&q).copied().unwrap_or(0);
             let num_substitution = substitution.get(&q).copied().unwrap_or(0);
             let num_insertion    = insertion.get(&q).copied().unwrap_or(0);
             let num_deletion     = deletion.get(&q).copied().unwrap_or(0);
             let num_error = num_substitution + num_insertion + num_deletion;
-            let error_rate = if num_observed > 0 { num_error as f64 / num_observed as f64 } else { 0.0 };
-            let empirical_q = if error_rate > 0.0 { -10.0 * error_rate.log10() } else { f64::INFINITY };
-            writeln!(out, "{},{:.4},{},{},{},{},{:.6}",
-                q, empirical_q, num_observed, num_substitution, num_insertion, num_deletion, error_rate
+            let norm_sub  = if num_observed > 0 { num_substitution as f64 / num_observed as f64 * scale } else { 0.0 };
+            let norm_ins  = if num_observed > 0 { num_insertion    as f64 / num_observed as f64 * scale } else { 0.0 };
+            let norm_del  = if num_observed > 0 { num_deletion     as f64 / num_observed as f64 * scale } else { 0.0 };
+            let norm_err  = if num_observed > 0 { num_error        as f64 / num_observed as f64 * scale } else { 0.0 };
+            let empirical_q = if norm_err > 0.0 { -10.0 * norm_err.log10() } else { f64::INFINITY };
+            writeln!(out, "{},{:.4},{},{},{},{},{:.6},{:.6},{:.6},{:.6}",
+                q, empirical_q,
+                num_observed, num_substitution, num_insertion, num_deletion,
+                norm_sub, norm_ins, norm_del, norm_err,
             ).unwrap();
         }
         out

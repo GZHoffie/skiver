@@ -1,2 +1,2 @@
 per_base_error_rate,per_base_error_rate_5-95th_percentile,mean_hazard_rate,mean_hazard_rate_5-95th_percentile,lambda,lambda_5-95th_percentile,beta,beta_5-95th_percentile,key_median_coverage,key_coverage_5-95th_percentile,true_median_coverage,true_coverage_5-95th_percentile
-0.139401,0.135898~0.143289,0.092183,0.092005~0.092371,0.150127,0.146064~0.154655,0.897542,0.891239~0.904614,31,11~46,255.584030,90.691109~379.253723
+0.139580,0.136294~0.143147,0.092132,0.091932~0.092334,0.150334,0.146523~0.154489,0.897087,0.891737~0.904002,31,11~46,255.606827,90.699196~379.287567

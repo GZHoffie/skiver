@@ -147,6 +147,8 @@ pub fn estimate_c_from_raw_files(files: &[&str]) -> (usize, u64) {
         return (1000, 0);
     }
 
-    let chunks = total_size.div_ceil(SIXTEEN_GB);
-    ((chunks as usize) * 1000, total_size)
+    // let chunks = total_size.div_ceil(SIXTEEN_GB);
+    // ((chunks as usize) * 1000, total_size)
+
+    (((total_size as f64 / SIXTEEN_GB as f64) * 1000.).ceil() as usize, total_size)
 }
