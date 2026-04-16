@@ -59,8 +59,8 @@ pub fn analyze(args: AnalyzeArgs) {
 
     let analyzer = ErrorAnalyzer::new(args.clone());
 
-    
-    let stats: KVmerStats;
+
+    let mut stats: KVmerStats;
     if let Some(reference) = &args.reference {
         if args.lower_bound.is_none() {
             info!("Reference is provided. Using default lower bound of 0.");
@@ -76,6 +76,10 @@ pub fn analyze(args: AnalyzeArgs) {
         let lower_bound = args.lower_bound.unwrap_or(10);
         stats = kvmer_set.get_stats(lower_bound);
     }
+
+    // Mark which keys are in the top `top_keys_fraction` by total_count.
+    // These high-coverage keys anchor the hazard rate (lambda/beta) estimation.
+    stats.error_summary.compute_high_coverage(args.top_keys_fraction);
     // if reference is set, the filter should be disabled
     // [FIXME] enable --use-all by default
     if args.reference.is_some() && !args.use_all {

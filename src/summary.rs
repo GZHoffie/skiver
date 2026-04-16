@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use crate::types::{EditOperation, ALL_OPERATIONS, SEQ_TO_BYTE, SEQ_TO_CHAR, ValueInfo, NeighborInfo};
 use crate::utils::_get_neighbors;
+use log::info;
 
 fn logit(p: f64) -> f64 { (p / (1.0 - p)).ln() }
 fn sigmoid(x: f64) -> f64 { 1.0 / (1.0 + (-x).exp()) }
@@ -47,6 +48,9 @@ pub struct ErrorSummary {
     pub homopolymer_lengths: Vec<u32>,
     pub error_counts_per_key: Vec<HashMap<NeighborInfo, u32>>,
     pub forward_error_counts_per_key: Vec<HashMap<NeighborInfo, u32>>,
+    /// Whether this key's total_count is above the (1 - top_keys_fraction) percentile threshold.
+    /// Populated by `compute_high_coverage`; empty until then.
+    pub is_high_coverage: Vec<bool>,
     v: usize,
 }
 
@@ -64,8 +68,46 @@ impl ErrorSummary {
             homopolymer_lengths: Vec::new(),
             error_counts_per_key: Vec::new(),
             forward_error_counts_per_key: Vec::new(),
+            is_high_coverage: Vec::new(),
             v,
         }
+    }
+
+    /// Compute the `is_high_coverage` flag for each key.
+    ///
+    /// A key is considered high-coverage when its `total_count` is at or above the
+    /// `(1 - fraction)` percentile of all `total_counts`.  For example, with the
+    /// default `fraction = 0.1` this marks the top 10% of keys by coverage.
+    pub fn compute_high_coverage(&mut self, fraction: f64) {
+        let n = self.total_counts.len();
+        if n == 0 {
+            self.is_high_coverage = Vec::new();
+            return;
+        }
+        let mut sorted_counts = self.total_counts.clone();
+        sorted_counts.sort_unstable();
+        let threshold_idx = ((1.0 - fraction) * n as f64) as usize;
+        let threshold = sorted_counts[threshold_idx.min(n - 1)];
+        let high_count = self.total_counts.iter().filter(|&&c| c >= threshold).count();
+        info!(
+            "High-coverage threshold (top {:.0}%): total_count >= {} ({} / {} keys, {:.1}%).",
+            fraction * 100.0,
+            threshold,
+            high_count,
+            n,
+            high_count as f64 / n as f64 * 100.0,
+        );
+        self.is_high_coverage = self.total_counts.iter().map(|&c| c >= threshold).collect();
+    }
+
+    /// Return the indices of keys marked as high-coverage.
+    ///
+    /// Falls back to all indices if `compute_high_coverage` has not been called yet.
+    pub fn high_coverage_indices(&self) -> Vec<usize> {
+        if self.is_high_coverage.is_empty() {
+            return (0..self.total_counts.len()).collect();
+        }
+        (0..self.is_high_coverage.len()).filter(|&i| self.is_high_coverage[i]).collect()
     }
 
     fn to_kmer_string(kmer: u64, size: u8) -> String {
@@ -188,7 +230,7 @@ impl ErrorSummary {
             None => (0..n).collect(),
         };
         let mut out = String::new();
-        write!(out, "key,consensus_value,passes_filter,homopolymer_length,consensus_count,neighbor_count,total_count").unwrap();
+        write!(out, "key,consensus_value,passes_filter,is_high_coverage,homopolymer_length,consensus_count,neighbor_count,total_count").unwrap();
         for op in ALL_OPERATIONS {
             write!(out, ",{:?}", op).unwrap();
         }
@@ -197,11 +239,13 @@ impl ErrorSummary {
         }
         writeln!(out).unwrap();
         for i in 0..n {
+            let high_cov = if self.is_high_coverage.is_empty() { false } else { self.is_high_coverage[i] };
             write!(out,
-                "{},{},{},{},{},{},{}",
+                "{},{},{},{},{},{},{},{}",
                 self.key_strings[i],
                 self.value_strings[i],
                 index_set.contains(&i),
+                high_cov,
                 self.homopolymer_lengths[i],
                 self.consensus_counts[i],
                 self.neighbor_counts[i],

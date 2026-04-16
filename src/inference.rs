@@ -15,26 +15,6 @@ use rand::Rng;
  * Each field is a tuple of (estimate, (5th_percentile, 95th_percentile))
  * where the confidence interval is estimated using bootstrap
  */
-pub struct ReadPositionCalibration {
-    pub index: u32,
-    pub from_start: bool,
-    pub num_observed: u64,
-    pub num_substitution: u64,
-    pub num_insertion: u64,
-    pub num_deletion: u64,
-}
-
-pub struct QscoreCalibration {
-    pub qscore: u8,
-    pub num_observed: u64,
-    pub num_substitution: u64,
-    pub num_insertion: u64,
-    pub num_deletion: u64,
-    pub error_rate: f64,
-    pub ci_lower: f64,
-    pub ci_upper: f64,
-}
-
 pub struct ErrorSpectrum {
     // estimated Weibull parameters
     pub estimated_lambda: (f32, (f32, f32)),
@@ -413,8 +393,8 @@ impl ErrorAnalyzer {
                 (-(- hr.clamp(EPSILON, 1.0 - EPSILON)).ln_1p()).ln())
             .collect::<Vec<f32>>();
         //let (b, log_a) = Self::linear_fit_f32(&x, &y);
-        //let (slope, intercept) = Self::ridge_fit_f32(&x, &y, 1.);
-        let (slope, intercept) = Self::linear_fit_huber_f32(&x, &y);
+        let (slope, intercept) = Self::ridge_fit_f32(&x, &y, self.args.alpha);
+        //let (slope, intercept) = Self::linear_fit_huber_f32(&x, &y);
         
         
         let beta = slope + 1.;
@@ -497,9 +477,19 @@ impl ErrorAnalyzer {
      *  3. Re-estimate lambda and beta from the remaining keys.
      *  4. Repeat until lambda and beta change by less than 1e-4.
      */
-    pub fn find_hazard_ratio_outliers(&self, stats: &KVmerStats) -> Vec<usize> {
+    /// Identify outlier keys iteratively using the Weibull hazard model.
+    ///
+    /// `input_indices` — when `Some`, lambda/beta are estimated using only the keys
+    /// that are both active *and* present in this list.  Outlier detection still
+    /// considers every active key.  Pass the high-coverage indices here to keep the
+    /// model fitting anchored to well-observed keys.
+    pub fn find_hazard_ratio_outliers(&self, stats: &KVmerStats, input_indices: Option<&Vec<usize>>) -> Vec<usize> {
         let n_keys = stats.error_summary.consensus_counts.len();
         let mut active = vec![true; n_keys];
+
+        // Pre-build a HashSet for O(1) membership tests when filtering by input_indices.
+        let input_set: Option<std::collections::HashSet<usize>> =
+            input_indices.map(|v| v.iter().copied().collect());
 
         let max_iter = 10;
         let convergence_tol = 1e-5_f32;
@@ -512,7 +502,12 @@ impl ErrorAnalyzer {
         let v_max = stats.v - self.args.ignore_largest_t as u8;
 
         for iter in 0..max_iter {
-            let indices: Vec<usize> = (0..n_keys).filter(|&i| active[i]).collect();
+            // For lambda/beta estimation, restrict to the intersection of active keys
+            // and the caller-supplied input_indices (if any).
+            let indices: Vec<usize> = match &input_set {
+                Some(set) => (0..n_keys).filter(|&i| active[i] && set.contains(&i)).collect(),
+                None      => (0..n_keys).filter(|&i| active[i]).collect(),
+            };
             if indices.is_empty() { break; }
 
             // the hazard rates are estimated using v=v_min,...,v_max
@@ -770,198 +765,24 @@ impl ErrorAnalyzer {
     }
 
 
-    /// For each observed Phred score, compute the empirical error rate using only
-    /// inlier keys (filtered by `find_hazard_ratio_outliers`), then bootstrap over
-    /// those key indices to estimate the 5th–95th percentile confidence interval.
-    ///
-    /// Returns a vector of `(qscore, num_correct, num_error, error_rate, ci_lower, ci_upper)`.
-    pub fn calibrate_qscores(&self, stats: &KVmerStats) -> Vec<QscoreCalibration> {
-        // Filter outlier keys
-        let indices = if !self.args.use_all {
-            self.find_hazard_ratio_outliers(stats)
-        } else {
-            (0..stats.error_summary.consensus_counts.len()).collect()
-        };
-
-        // Aggregate qscore counts from inlier keys
-        let mut qscore_observed: HashMap<u8, u64> = HashMap::new();
-        let mut qscore_substitution: HashMap<u8, u64> = HashMap::new();
-        let mut qscore_insertion: HashMap<u8, u64> = HashMap::new();
-        let mut qscore_deletion: HashMap<u8, u64> = HashMap::new();
-        for &i in &indices {
-            for (&q, &c) in &stats.phred_summary.observed_per_key[i] {
-                *qscore_observed.entry(q).or_insert(0) += c;
-            }
-            for (&q, &c) in &stats.phred_summary.substitution_per_key[i] {
-                *qscore_substitution.entry(q).or_insert(0) += c;
-            }
-            for (&q, &c) in &stats.phred_summary.insertion_per_key[i] {
-                *qscore_insertion.entry(q).or_insert(0) += c;
-            }
-            for (&q, &c) in &stats.phred_summary.deletion_per_key[i] {
-                *qscore_deletion.entry(q).or_insert(0) += c;
-            }
-        }
-
-        let mut qscores: Vec<u8> = qscore_observed.keys().cloned().collect();
-        qscores.sort_unstable();
-        qscores.dedup();
-
-        // Bootstrap: resample key indices with replacement, recompute error rates
-        let mut bootstrap_rates: HashMap<u8, Vec<f64>> = qscores.iter().map(|&q| (q, Vec::new())).collect();
-        for _ in 0..self.args.num_experiments {
-            let sample = Self::random_subsample_with_replacement(&indices, indices.len());
-            let mut obs_sample: HashMap<u8, u64> = HashMap::new();
-            let mut s_sample: HashMap<u8, u64> = HashMap::new();
-            let mut ins_sample: HashMap<u8, u64> = HashMap::new();
-            let mut del_sample: HashMap<u8, u64> = HashMap::new();
-            for &i in &sample {
-                for (&q, &c) in &stats.phred_summary.observed_per_key[i] {
-                    *obs_sample.entry(q).or_insert(0) += c;
-                }
-                for (&q, &c) in &stats.phred_summary.substitution_per_key[i] {
-                    *s_sample.entry(q).or_insert(0) += c;
-                }
-                for (&q, &c) in &stats.phred_summary.insertion_per_key[i] {
-                    *ins_sample.entry(q).or_insert(0) += c;
-                }
-                for (&q, &c) in &stats.phred_summary.deletion_per_key[i] {
-                    *del_sample.entry(q).or_insert(0) += c;
-                }
-            }
-            for &q in &qscores {
-                let obs = *obs_sample.get(&q).unwrap_or(&0);
-                let e = s_sample.get(&q).unwrap_or(&0)
-                      + ins_sample.get(&q).unwrap_or(&0)
-                      + del_sample.get(&q).unwrap_or(&0);
-                let rate = if obs > 0 { e as f64 / obs as f64 } else { 0.0 };
-                bootstrap_rates.get_mut(&q).unwrap().push(rate);
-            }
-        }
-
-        // Build result with point estimates and CI
-        let mut result = Vec::new();
-        for &q in &qscores {
-            let observed     = *qscore_observed.get(&q).unwrap_or(&0);
-            let substitution = *qscore_substitution.get(&q).unwrap_or(&0);
-            let insertion    = *qscore_insertion.get(&q).unwrap_or(&0);
-            let deletion     = *qscore_deletion.get(&q).unwrap_or(&0);
-            let error = substitution + insertion + deletion;
-            let error_rate = if observed > 0 { error as f64 / observed as f64 } else { 0.0 };
-
-            let mut rates = bootstrap_rates[&q].clone();
-            rates.sort_by(f64::total_cmp);
-            let n = rates.len();
-            let lower = if n > 0 { rates[(n as f64 * 0.05) as usize] } else { 0.0 };
-            let upper = if n > 0 { rates[((n as f64 * 0.95) as usize).min(n - 1)] } else { 0.0 };
-
-            result.push(QscoreCalibration {
-                qscore: q,
-                num_observed: observed,
-                num_substitution: substitution,
-                num_insertion: insertion,
-                num_deletion: deletion,
-                error_rate,
-                ci_lower: lower,
-                ci_upper: upper,
-            });
-        }
-        result
-    }
-
-    /// Like `calibrate_qscores`, but aggregates correct/error counts by read position
-    /// (from start and from end) across inlier keys.  No bootstrap CI is computed
-    /// since the output does not include confidence intervals.
-    pub fn calibrate_read_positions(&self, stats: &KVmerStats) -> Vec<ReadPositionCalibration> {
-        let indices = if !self.args.use_all {
-            self.find_hazard_ratio_outliers(stats)
-        } else {
-            (0..stats.error_summary.consensus_counts.len()).collect()
-        };
-
-        let mut observed_from_start: HashMap<u32, u64> = HashMap::new();
-        let mut observed_from_end: HashMap<u32, u64> = HashMap::new();
-        let mut substitution_from_start: HashMap<u32, u64> = HashMap::new();
-        let mut substitution_from_end: HashMap<u32, u64> = HashMap::new();
-        let mut insertion_from_start: HashMap<u32, u64> = HashMap::new();
-        let mut insertion_from_end: HashMap<u32, u64> = HashMap::new();
-        let mut deletion_from_start: HashMap<u32, u64> = HashMap::new();
-        let mut deletion_from_end: HashMap<u32, u64> = HashMap::new();
-
-        for &i in &indices {
-            for (&pos, &c) in &stats.read_position_summary.observed_from_start_per_key[i] {
-                *observed_from_start.entry(pos).or_insert(0) += c;
-            }
-            for (&pos, &c) in &stats.read_position_summary.observed_from_end_per_key[i] {
-                *observed_from_end.entry(pos).or_insert(0) += c;
-            }
-            for (&pos, &c) in &stats.read_position_summary.substitution_from_start_per_key[i] {
-                *substitution_from_start.entry(pos).or_insert(0) += c;
-            }
-            for (&pos, &c) in &stats.read_position_summary.substitution_from_end_per_key[i] {
-                *substitution_from_end.entry(pos).or_insert(0) += c;
-            }
-            for (&pos, &c) in &stats.read_position_summary.insertion_from_start_per_key[i] {
-                *insertion_from_start.entry(pos).or_insert(0) += c;
-            }
-            for (&pos, &c) in &stats.read_position_summary.insertion_from_end_per_key[i] {
-                *insertion_from_end.entry(pos).or_insert(0) += c;
-            }
-            for (&pos, &c) in &stats.read_position_summary.deletion_from_start_per_key[i] {
-                *deletion_from_start.entry(pos).or_insert(0) += c;
-            }
-            for (&pos, &c) in &stats.read_position_summary.deletion_from_end_per_key[i] {
-                *deletion_from_end.entry(pos).or_insert(0) += c;
-            }
-        }
-
-        let mut result = Vec::new();
-
-        let mut start_positions: Vec<u32> = observed_from_start.keys().copied().collect();
-        start_positions.sort_unstable();
-        start_positions.dedup();
-        for pos in start_positions {
-            result.push(ReadPositionCalibration {
-                index: pos,
-                from_start: true,
-                num_observed: *observed_from_start.get(&pos).unwrap_or(&0),
-                num_substitution: *substitution_from_start.get(&pos).unwrap_or(&0),
-                num_insertion: *insertion_from_start.get(&pos).unwrap_or(&0),
-                num_deletion: *deletion_from_start.get(&pos).unwrap_or(&0),
-            });
-        }
-
-        let mut end_positions: Vec<u32> = observed_from_end.keys().copied().collect();
-        end_positions.sort_unstable();
-        end_positions.dedup();
-        for pos in end_positions {
-            result.push(ReadPositionCalibration {
-                index: pos,
-                from_start: false,
-                num_observed: *observed_from_end.get(&pos).unwrap_or(&0),
-                num_substitution: *substitution_from_end.get(&pos).unwrap_or(&0),
-                num_insertion: *insertion_from_end.get(&pos).unwrap_or(&0),
-                num_deletion: *deletion_from_end.get(&pos).unwrap_or(&0),
-            });
-        }
-
-        result
-    }
-
     pub fn analyze(&self, stats: &KVmerStats) -> ErrorSpectrum {
-        // exclude the hazard ratio outliers
-        let indices = if !self.args.use_all {
-            self.find_hazard_ratio_outliers(stats)
+        // Use only the trustworthy (high coverage, passing the filter) keys for hazard rate estimation.
+        let (indices_passes_filter, indices_trustworthy) = if !self.args.use_all {
+            let high_coverage = stats.error_summary.high_coverage_indices();
+            let keys_passing_filter = self.find_hazard_ratio_outliers(stats, Some(&high_coverage));
+            
+            let keys_trustworthy = high_coverage.into_iter().filter(|i| keys_passing_filter.contains(i)).collect::<Vec<usize>>();
+            (keys_passing_filter, keys_trustworthy)
         } else {
-            (0..stats.error_summary.consensus_counts.len()).collect()
+            ((0..stats.error_summary.consensus_counts.len()).collect(), (0..stats.error_summary.consensus_counts.len()).collect())
         };
 
         // estimate SNP rates
-        let error_rates = self.estimate_error_rate(stats, &indices);
+        let error_rates = self.estimate_error_rate(stats, &indices_trustworthy);
 
         // estimate hazard ratio parameters
-        let (lambda, beta, hazard_ratio, x_sum, y_sum) = self.estimate_hazard_ratio(stats, &indices);
-        let (lambda_ci, beta_ci, hazard_ratio_ci, error_rate_ci) = self.estimate_hazard_ratio_confidence_interval(stats, &indices);
+        let (lambda, beta, hazard_ratio, x_sum, y_sum) = self.estimate_hazard_ratio(stats, &indices_trustworthy);
+        let (lambda_ci, beta_ci, hazard_ratio_ci, error_rate_ci) = self.estimate_hazard_ratio_confidence_interval(stats, &indices_trustworthy);
         let mean_hazard_rate = self.estimate_mean_hazard_rate(&hazard_ratio);
         let per_base_error_rate = 1.0 - (-lambda).exp();
         let per_base_error_rate_ci = (1.0 - (-(lambda_ci.0)).exp(), 1.0 - (-(lambda_ci.1)).exp());
@@ -987,15 +808,15 @@ impl ErrorAnalyzer {
                 ).expect("Could not write to hazard ratio output file.");
             }
 
-            fs::write(format!("{}.kvmer.csv", prefix), stats.error_summary.to_csv(Some(&indices))).unwrap();
-            fs::write(format!("{}.summary_error_spectrum.csv", prefix), stats.error_spectrum.to_csv(Some(&indices))).unwrap();
-            fs::write(format!("{}.summary_error_spectrum_dependence_on_t.csv", prefix), stats.error_spectrum.to_dependence_on_t_csv(Some(&indices), self.args.k as usize, self.args.ignore_smallest_t, self.args.ignore_largest_t)).unwrap();
-            fs::write(format!("{}.summary_phred.csv", prefix), stats.phred_summary.to_csv(Some(&indices), per_base_error_rate as f64)).unwrap();
-            fs::write(format!("{}.summary_read_position.csv", prefix), stats.read_position_summary.to_csv(Some(&indices), per_base_error_rate as f64)).unwrap();
+            fs::write(format!("{}.kvmer.csv", prefix), stats.error_summary.to_csv(Some(&indices_passes_filter))).unwrap();
+            fs::write(format!("{}.summary_error_spectrum.csv", prefix), stats.error_spectrum.to_csv(Some(&indices_trustworthy))).unwrap();
+            fs::write(format!("{}.summary_error_spectrum_dependence_on_t.csv", prefix), stats.error_spectrum.to_dependence_on_t_csv(Some(&indices_trustworthy), self.args.k as usize, self.args.ignore_smallest_t, self.args.ignore_largest_t)).unwrap();
+            fs::write(format!("{}.summary_phred.csv", prefix), stats.phred_summary.to_csv(Some(&indices_passes_filter), per_base_error_rate as f64)).unwrap();
+            fs::write(format!("{}.summary_read_position.csv", prefix), stats.read_position_summary.to_csv(Some(&indices_passes_filter), per_base_error_rate as f64)).unwrap();
         }
 
         // estimate key coverage
-        let key_coverage = self.key_coverage(stats, &indices);
+        let key_coverage = self.key_coverage(stats, &indices_passes_filter);
         let estimated_coverage = self.estimate_true_coverage(lambda, beta, key_coverage);
 
         ErrorSpectrum {

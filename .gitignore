@@ -18,3 +18,7 @@ dist/
 src-tauri/target/
 src-tauri/gen/
 ui/src-tauri/binaries/skiver-*
+example/sim*
+example/SRR7415629*
+figures/sim*
+figures/SRR7415629*
