@@ -393,8 +393,8 @@ impl ErrorAnalyzer {
                 (-(- hr.clamp(EPSILON, 1.0 - EPSILON)).ln_1p()).ln())
             .collect::<Vec<f32>>();
         //let (b, log_a) = Self::linear_fit_f32(&x, &y);
-        let (slope, intercept) = Self::ridge_fit_f32(&x, &y, self.args.alpha);
-        //let (slope, intercept) = Self::linear_fit_huber_f32(&x, &y);
+        //let (slope, intercept) = Self::ridge_fit_f32(&x, &y, 0.5);
+        let (slope, intercept) = Self::linear_fit_huber_f32(&x, &y);
         
         
         let beta = slope + 1.;
@@ -477,19 +477,9 @@ impl ErrorAnalyzer {
      *  3. Re-estimate lambda and beta from the remaining keys.
      *  4. Repeat until lambda and beta change by less than 1e-4.
      */
-    /// Identify outlier keys iteratively using the Weibull hazard model.
-    ///
-    /// `input_indices` — when `Some`, lambda/beta are estimated using only the keys
-    /// that are both active *and* present in this list.  Outlier detection still
-    /// considers every active key.  Pass the high-coverage indices here to keep the
-    /// model fitting anchored to well-observed keys.
-    pub fn find_hazard_ratio_outliers(&self, stats: &KVmerStats, input_indices: Option<&Vec<usize>>) -> Vec<usize> {
+    pub fn find_hazard_ratio_outliers(&self, stats: &KVmerStats) -> Vec<usize> {
         let n_keys = stats.error_summary.consensus_counts.len();
         let mut active = vec![true; n_keys];
-
-        // Pre-build a HashSet for O(1) membership tests when filtering by input_indices.
-        let input_set: Option<std::collections::HashSet<usize>> =
-            input_indices.map(|v| v.iter().copied().collect());
 
         let max_iter = 10;
         let convergence_tol = 1e-5_f32;
@@ -502,12 +492,7 @@ impl ErrorAnalyzer {
         let v_max = stats.v - self.args.ignore_largest_t as u8;
 
         for iter in 0..max_iter {
-            // For lambda/beta estimation, restrict to the intersection of active keys
-            // and the caller-supplied input_indices (if any).
-            let indices: Vec<usize> = match &input_set {
-                Some(set) => (0..n_keys).filter(|&i| active[i] && set.contains(&i)).collect(),
-                None      => (0..n_keys).filter(|&i| active[i]).collect(),
-            };
+            let indices: Vec<usize> = (0..n_keys).filter(|&i| active[i]).collect();
             if indices.is_empty() { break; }
 
             // the hazard rates are estimated using v=v_min,...,v_max
@@ -766,23 +751,18 @@ impl ErrorAnalyzer {
 
 
     pub fn analyze(&self, stats: &KVmerStats) -> ErrorSpectrum {
-        // Use only the trustworthy (high coverage, passing the filter) keys for hazard rate estimation.
-        let (indices_passes_filter, indices_trustworthy) = if !self.args.use_all {
-            let high_coverage = stats.error_summary.high_coverage_indices();
-            let keys_passing_filter = self.find_hazard_ratio_outliers(stats, Some(&high_coverage));
-            
-            let keys_trustworthy = high_coverage.into_iter().filter(|i| keys_passing_filter.contains(i)).collect::<Vec<usize>>();
-            (keys_passing_filter, keys_trustworthy)
+        let indices = if !self.args.use_all {
+            self.find_hazard_ratio_outliers(stats)
         } else {
-            ((0..stats.error_summary.consensus_counts.len()).collect(), (0..stats.error_summary.consensus_counts.len()).collect())
+            (0..stats.error_summary.consensus_counts.len()).collect()
         };
 
         // estimate SNP rates
-        let error_rates = self.estimate_error_rate(stats, &indices_trustworthy);
+        let error_rates = self.estimate_error_rate(stats, &indices);
 
         // estimate hazard ratio parameters
-        let (lambda, beta, hazard_ratio, x_sum, y_sum) = self.estimate_hazard_ratio(stats, &indices_trustworthy);
-        let (lambda_ci, beta_ci, hazard_ratio_ci, error_rate_ci) = self.estimate_hazard_ratio_confidence_interval(stats, &indices_trustworthy);
+        let (lambda, beta, hazard_ratio, x_sum, y_sum) = self.estimate_hazard_ratio(stats, &indices);
+        let (lambda_ci, beta_ci, hazard_ratio_ci, error_rate_ci) = self.estimate_hazard_ratio_confidence_interval(stats, &indices);
         let mean_hazard_rate = self.estimate_mean_hazard_rate(&hazard_ratio);
         let per_base_error_rate = 1.0 - (-lambda).exp();
         let per_base_error_rate_ci = (1.0 - (-(lambda_ci.0)).exp(), 1.0 - (-(lambda_ci.1)).exp());
@@ -808,15 +788,15 @@ impl ErrorAnalyzer {
                 ).expect("Could not write to hazard ratio output file.");
             }
 
-            fs::write(format!("{}.kvmer.csv", prefix), stats.error_summary.to_csv(Some(&indices_passes_filter))).unwrap();
-            fs::write(format!("{}.summary_error_spectrum.csv", prefix), stats.error_spectrum.to_csv(Some(&indices_trustworthy))).unwrap();
-            fs::write(format!("{}.summary_error_spectrum_dependence_on_t.csv", prefix), stats.error_spectrum.to_dependence_on_t_csv(Some(&indices_trustworthy), self.args.k as usize, self.args.ignore_smallest_t, self.args.ignore_largest_t)).unwrap();
-            fs::write(format!("{}.summary_phred.csv", prefix), stats.phred_summary.to_csv(Some(&indices_passes_filter), per_base_error_rate as f64)).unwrap();
-            fs::write(format!("{}.summary_read_position.csv", prefix), stats.read_position_summary.to_csv(Some(&indices_passes_filter), per_base_error_rate as f64)).unwrap();
+            fs::write(format!("{}.kvmer.csv", prefix), stats.error_summary.to_csv(Some(&indices))).unwrap();
+            fs::write(format!("{}.summary_error_spectrum.csv", prefix), stats.error_spectrum.to_csv(Some(&indices))).unwrap();
+            fs::write(format!("{}.summary_error_spectrum_dependence_on_t.csv", prefix), stats.error_spectrum.to_dependence_on_t_csv(Some(&indices), self.args.k as usize, self.args.ignore_smallest_t, self.args.ignore_largest_t)).unwrap();
+            fs::write(format!("{}.summary_phred.csv", prefix), stats.phred_summary.to_csv(Some(&indices), per_base_error_rate as f64)).unwrap();
+            fs::write(format!("{}.summary_read_position.csv", prefix), stats.read_position_summary.to_csv(Some(&indices), per_base_error_rate as f64)).unwrap();
         }
 
         // estimate key coverage
-        let key_coverage = self.key_coverage(stats, &indices_passes_filter);
+        let key_coverage = self.key_coverage(stats, &indices);
         let estimated_coverage = self.estimate_true_coverage(lambda, beta, key_coverage);
 
         ErrorSpectrum {

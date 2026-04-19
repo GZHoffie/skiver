@@ -108,12 +108,6 @@ pub struct AnalyzeArgs {
 
     #[clap(long, default_value_t = String::from("weibull"), help_heading = "ALGORITHM", help = "Model used to fit the hazard rates vs. t. Should be one of 'constant' (assuming that the hazard rate is constant over t), 'weibull' (assuming T follows a discrete Weibull distribution).")]
     pub hazard_model: String,
-
-    #[clap(short, long = "alpha", default_value_t = 0.1, help_heading = "ALGORITHM", help = "Regularization strength for ridge regression when fitting the hazard model..")]
-    pub alpha: f32,
-
-    #[clap(long = "top-keys-fraction", default_value_t = 0.1, help_heading = "ALGORITHM", help = "Fraction of keys with the highest total_count to use for hazard rate (lambda/beta) estimation. The threshold is the (1 - fraction) percentile of total_count across all keys. Default: 0.1 (top 10%).")]
-    pub top_keys_fraction: f64,
 }
 
 #[derive(Args, Default)]
