@@ -792,7 +792,7 @@ impl ErrorAnalyzer {
             fs::write(format!("{}.summary_error_spectrum.csv", prefix), stats.error_spectrum.to_csv(Some(&indices))).unwrap();
             fs::write(format!("{}.summary_error_spectrum_dependence_on_t.csv", prefix), stats.error_spectrum.to_dependence_on_t_csv(Some(&indices), self.args.k as usize, self.args.ignore_smallest_t, self.args.ignore_largest_t)).unwrap();
             fs::write(format!("{}.summary_phred.csv", prefix), stats.phred_summary.to_csv(Some(&indices), per_base_error_rate as f64)).unwrap();
-            fs::write(format!("{}.summary_read_position.csv", prefix), stats.read_position_summary.to_csv(Some(&indices), per_base_error_rate as f64)).unwrap();
+            fs::write(format!("{}.summary_read_position.csv", prefix), stats.read_position_summary.to_csv(Some(&indices))).unwrap();
         }
 
         // estimate key coverage

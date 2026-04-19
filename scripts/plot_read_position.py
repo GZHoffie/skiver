@@ -9,7 +9,6 @@ def plot_read_position(read_position_file, output_file, num_bases=100):
     color_smooth = 'indianred'
 
     df = pd.read_csv(read_position_file)
-    df["num_total"] = df["num_correct"] + df["num_error"]
 
     df_start = df[df["from_start"] == True].sort_values("index")
     df_end = df[df["from_start"] == False].sort_values("index")
@@ -19,19 +18,19 @@ def plot_read_position(read_position_file, output_file, num_bases=100):
 
     fig, axes = plt.subplots(2, 2, figsize=(12, 8),
                              gridspec_kw={"height_ratios": [3, 1]})
-    
-    max_y = max(df_start["error_rate"].max(), df_end["error_rate"].max()) * 1.1
+
+    max_y = max(df_start["hazard_rate"].max(), df_end["hazard_rate"].max()) * 1.1
 
     for col, (df_pos, label) in enumerate([(df_start, "from start"), (df_end, "from end")]):
         ax_line = axes[0][col]
         ax_bar = axes[1][col]
 
         x = df_pos["index"].values
-        y = df_pos["error_rate"].values
-        counts = df_pos["num_total"].values
+        y = df_pos["hazard_rate"].values
+        counts = df_pos["num_correct"].values + df_pos["num_error"].values
 
         # Raw error rate line
-        ax_line.plot(x, y, color=color, linewidth=1.5, alpha=0.6, label="Error rate")
+        ax_line.plot(x, y, color=color, linewidth=1.5, alpha=0.6, label="Hazard rate")
 
         # Smoothed line (uniform filter, window = 5% of num_bases, min 3)
         window = max(3, num_bases // 10)
@@ -40,8 +39,8 @@ def plot_read_position(read_position_file, output_file, num_bases=100):
             ax_line.plot(x, y_smooth, color=color_smooth, linewidth=2.5,
                          label=f"Smoothed (window={window})")
 
-        ax_line.set_title(f"Error rate ({label})")
-        ax_line.set_ylabel("Error rate")
+        ax_line.set_title(f"Hazard rate ({label})")
+        ax_line.set_ylabel("Hazard rate")
         ax_line.set_xlim(x.min(), x.max())
         ax_line.set_ylim(0, max_y)
         ax_line.legend(frameon=False)
@@ -51,7 +50,7 @@ def plot_read_position(read_position_file, output_file, num_bases=100):
         # Number of bases bar
         ax_bar.bar(x, counts, width=1.0, color=color, alpha=0.7)
         ax_bar.set_xlabel("Position in read")
-        ax_bar.set_ylabel("# bases used for estimation")
+        ax_bar.set_ylabel("# observed bases")
         ax_bar.set_xlim(x.min(), x.max())
         ax_bar.spines['top'].set_visible(False)
         ax_bar.spines['right'].set_visible(False)

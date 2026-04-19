@@ -5,6 +5,7 @@ use rust_htslib::{bam, bam::Read as BamRead};
 use serde::{Serialize, Deserialize};
 //use rayon::prelude::*;
 
+use std::alloc::Layout;
 use std::fs::File;
 use std::io::{BufWriter, BufReader};
 
@@ -235,7 +236,7 @@ impl KVmerSet {
         (key_containment, key_value_containment)
     }
 
-    pub fn get_stats(&self, threshold: u32) -> KVmerStats {
+    pub fn get_stats(&self, threshold: u32, last_base_only: bool) -> KVmerStats {
         let mut keys: Vec<u64> = Vec::new();
         let mut consensus_values: Vec<u64> = Vec::new();
         let mut error_summary = ErrorSummary::new(self.value_size as usize);
@@ -267,7 +268,7 @@ impl KVmerSet {
                 consensus_values.push(max_value);
                 error_spectrum.update(error_summary.error_counts_per_key.last().unwrap().clone(), error_summary.forward_error_counts_per_key.last().unwrap().clone());
                 phred_summary.update(max_value, self.value_size, self.bidirectional, value_map);
-                read_position_summary.update(max_value, self.value_size, self.bidirectional, value_map);
+                read_position_summary.update(max_value, self.value_size, value_map, last_base_only);
             }
         }
 
@@ -284,7 +285,7 @@ impl KVmerSet {
     }
 
     #[allow(unused)]
-    pub fn get_stats_with_reference(&self, threshold: u32, reference: &KVmerSet) -> KVmerStats {
+    pub fn get_stats_with_reference(&self, threshold: u32, reference: &KVmerSet, last_base_only: bool) -> KVmerStats {
         let mut keys: Vec<u64> = Vec::new();
         let mut consensus_values: Vec<u64> = Vec::new();
         let mut error_summary = ErrorSummary::new(self.value_size as usize);
@@ -324,7 +325,7 @@ impl KVmerSet {
                 consensus_values.push(consensus_value);
                 error_spectrum.update(error_summary.error_counts_per_key.last().unwrap().clone(), error_summary.forward_error_counts_per_key.last().unwrap().clone());
                 phred_summary.update(consensus_value, self.value_size, self.bidirectional, value_map);
-                read_position_summary.update(consensus_value, self.value_size, self.bidirectional, value_map);
+                read_position_summary.update(consensus_value, self.value_size, value_map, last_base_only);
             }
         }
 

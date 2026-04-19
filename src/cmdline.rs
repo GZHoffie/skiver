@@ -108,6 +108,9 @@ pub struct AnalyzeArgs {
 
     #[clap(long, default_value_t = String::from("weibull"), help_heading = "ALGORITHM", help = "Model used to fit the hazard rates vs. t. Should be one of 'constant' (assuming that the hazard rate is constant over t), 'weibull' (assuming T follows a discrete Weibull distribution).")]
     pub hazard_model: String,
+
+    #[clap(long, help_heading = "ALGORITHM", help = "If set, only the last base of each value is considered in the read position-specific error rate estimation, so that we estimate h(k+v).")]
+    pub last_base_only: bool,
 }
 
 #[derive(Args, Default)]
