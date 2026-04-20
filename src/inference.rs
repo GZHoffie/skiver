@@ -24,6 +24,11 @@ pub struct ErrorSpectrum {
     pub per_base_error_rate: (f32, (f32, f32)),
     pub mean_hazard_rate: (f32, (f32, f32)),
 
+    // per-error-type rates: per_base_error_rate * proportion_t, CI scaled by the same proportion
+    pub substitution_rate: (f32, (f32, f32)),
+    pub insertion_rate: (f32, (f32, f32)),
+    pub deletion_rate: (f32, (f32, f32)),
+
     // coverage information
     pub key_coverage: (f32, (f32, f32)),
     pub estimated_coverage: (f32, (f32, f32)),
@@ -767,6 +772,22 @@ impl ErrorAnalyzer {
         let per_base_error_rate = 1.0 - (-lambda).exp();
         let per_base_error_rate_ci = (1.0 - (-(lambda_ci.0)).exp(), 1.0 - (-(lambda_ci.1)).exp());
 
+        // per-error-type rates using proportions from phred summary
+        let (prop_sub, prop_ins, prop_del) = stats.phred_summary.error_proportions(Some(&indices));
+        let (prop_sub, prop_ins, prop_del) = (prop_sub as f32, prop_ins as f32, prop_del as f32);
+        let substitution_rate = (
+            per_base_error_rate * prop_sub,
+            (per_base_error_rate_ci.0 * prop_sub, per_base_error_rate_ci.1 * prop_sub),
+        );
+        let insertion_rate = (
+            per_base_error_rate * prop_ins,
+            (per_base_error_rate_ci.0 * prop_ins, per_base_error_rate_ci.1 * prop_ins),
+        );
+        let deletion_rate = (
+            per_base_error_rate * prop_del,
+            (per_base_error_rate_ci.0 * prop_del, per_base_error_rate_ci.1 * prop_del),
+        );
+
         if let Some(prefix) = &self.args.output_prefix {
             use std::fs;
             use std::fs::File;
@@ -804,6 +825,9 @@ impl ErrorAnalyzer {
             estimated_beta: (beta, beta_ci),
             per_base_error_rate: (per_base_error_rate, per_base_error_rate_ci),
             mean_hazard_rate: (mean_hazard_rate, error_rate_ci),
+            substitution_rate,
+            insertion_rate,
+            deletion_rate,
 
             key_coverage: key_coverage,
             estimated_coverage: estimated_coverage,
@@ -829,6 +853,11 @@ pub fn spectrum_to_str(spectrum: &ErrorSpectrum, bidirectional: bool) -> String 
     result.push_str(&format!("{:.6},{:.6}~{:.6},", spectrum.per_base_error_rate.0, (spectrum.per_base_error_rate.1).0, (spectrum.per_base_error_rate.1).1));
     result.push_str(&format!("{:.6},{:.6}~{:.6},", spectrum.mean_hazard_rate.0, (spectrum.mean_hazard_rate.1).0, (spectrum.mean_hazard_rate.1).1));
 
+    // per-error-type rates (per_base_error_rate * proportion)
+    result.push_str(&format!("{:.6},{:.6}~{:.6},", spectrum.substitution_rate.0, (spectrum.substitution_rate.1).0, (spectrum.substitution_rate.1).1));
+    result.push_str(&format!("{:.6},{:.6}~{:.6},", spectrum.insertion_rate.0, (spectrum.insertion_rate.1).0, (spectrum.insertion_rate.1).1));
+    result.push_str(&format!("{:.6},{:.6}~{:.6},", spectrum.deletion_rate.0, (spectrum.deletion_rate.1).0, (spectrum.deletion_rate.1).1));
+
     // hazard ratio parameters a and b
     result.push_str(&format!("{:.6},{:.6}~{:.6},", spectrum.estimated_lambda.0, (spectrum.estimated_lambda.1).0, (spectrum.estimated_lambda.1).1));
     result.push_str(&format!("{:.6},{:.6}~{:.6},", spectrum.estimated_beta.0, (spectrum.estimated_beta.1).0, (spectrum.estimated_beta.1).1));
@@ -849,6 +878,9 @@ pub fn header_str(bidirectional: bool) -> String {
 
     result.push_str("per_base_error_rate,per_base_error_rate_5-95th_percentile,");
     result.push_str("mean_hazard_rate,mean_hazard_rate_5-95th_percentile,");
+    result.push_str("substitution_rate,substitution_rate_5-95th_percentile,");
+    result.push_str("insertion_rate,insertion_rate_5-95th_percentile,");
+    result.push_str("deletion_rate,deletion_rate_5-95th_percentile,");
     result.push_str("lambda,lambda_5-95th_percentile,");
     result.push_str("beta,beta_5-95th_percentile,");
 

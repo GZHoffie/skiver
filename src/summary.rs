@@ -3,34 +3,6 @@ use crate::types::{EditOperation, ALL_OPERATIONS, SEQ_TO_BYTE, SEQ_TO_CHAR, Valu
 use crate::utils::_get_neighbors;
 use log::info;
 
-fn logit(p: f64) -> f64 { (p / (1.0 - p)).ln() }
-fn sigmoid(x: f64) -> f64 { 1.0 / (1.0 + (-x).exp()) }
-
-/// Find δ such that the weighted average of `sigmoid(logit(raw_rate_i) + δ)` equals `target`.
-/// `bins` is a slice of `(raw_rate, weight)` pairs; bins with `raw_rate == 0` contribute 0
-/// regardless of δ and are excluded from the search (they don't affect the result).
-/// Returns δ = 0.0 if all bins have zero rate or total weight is zero.
-fn find_logit_shift(bins: &[(f64, f64)], target: f64) -> f64 {
-    let total_weight: f64 = bins.iter().map(|(_, w)| w).sum();
-    if total_weight == 0.0 { return 0.0; }
-
-    let weighted_avg = |delta: f64| -> f64 {
-        bins.iter().map(|(r, w)| {
-            let norm = if *r <= 0.0 { 0.0 } else if *r >= 1.0 { 1.0 } else {
-                sigmoid(logit(*r) + delta)
-            };
-            norm * w
-        }).sum::<f64>() / total_weight
-    };
-
-    let mut lo = -50.0_f64;
-    let mut hi =  50.0_f64;
-    for _ in 0..64 {
-        let mid = (lo + hi) * 0.5;
-        if weighted_avg(mid) < target { lo = mid; } else { hi = mid; }
-    }
-    (lo + hi) * 0.5
-}
 
 /// Per-key error-rate statistics.
 /// Corresponds to `KVmerStats` fields: `consensus_counts`, `total_counts`,
@@ -559,10 +531,30 @@ impl ReadPositionSummary {
 }
 
 impl PhredScoreSummary {
-    /// `per_base_error_rate` is the global error rate from the hazard-ratio model
-    /// (i.e. `1 - exp(-lambda)`) used to normalise the per-qscore rates via a logit-shift so
-    /// that `sum(normalized_error_rate * num_observed) / sum(num_observed) == per_base_error_rate`.
-    /// `normalized_error_rate` is always in `[0, 1]`.
+    /// Returns `(prop_sub, prop_ins, prop_del)` — the fraction of each error type among all
+    /// errors observed for the selected indices.  Falls back to equal thirds if no errors seen.
+    pub fn error_proportions(&self, indices: Option<&[usize]>) -> (f64, f64, f64) {
+        let all: Vec<usize>;
+        let indices = match indices {
+            Some(idx) => idx,
+            None => { all = (0..self.substitution_per_key.len()).collect(); &all }
+        };
+        let total_sub: u64 = indices.iter().flat_map(|&i| self.substitution_per_key[i].values().copied()).sum();
+        let total_ins: u64 = indices.iter().flat_map(|&i| self.insertion_per_key[i].values().copied()).sum();
+        let total_del: u64 = indices.iter().flat_map(|&i| self.deletion_per_key[i].values().copied()).sum();
+        let total = total_sub + total_ins + total_del;
+        if total == 0 {
+            return (1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0);
+        }
+        (total_sub as f64 / total as f64,
+         total_ins as f64 / total as f64,
+         total_del as f64 / total as f64)
+    }
+
+    /// Estimates per-quality-score error rates using a Bayesian approach:
+    ///   Pr[error_type | Q] = Pr[Q | error_type] * Pr[error_type] / Pr[Q]
+    /// where Pr[Q | error_type] is estimated from the accumulated counts, Pr[Q] from `observed`,
+    /// and Pr[error_type] = per_base_error_rate * proportion_of_that_error_type.
     pub fn to_csv(&self, indices: Option<&[usize]>, per_base_error_rate: f64) -> String {
         use std::fmt::Write;
         let all: Vec<usize>;
@@ -581,41 +573,56 @@ impl PhredScoreSummary {
             for (&q, &c) in &self.deletion_per_key[i]     { *deletion.entry(q).or_insert(0)     += c; }
         }
 
-        // Build (raw_rate, weight) pairs for the logit-shift normalisation.
-        let bins: Vec<(f64, f64)> = observed.iter().map(|(q, &no)| {
-            let ne = substitution.get(q).copied().unwrap_or(0)
-                + insertion.get(q).copied().unwrap_or(0)
-                + deletion.get(q).copied().unwrap_or(0);
-            (ne as f64 / no as f64, no as f64)
-        }).collect();
-        let delta = find_logit_shift(&bins, per_base_error_rate);
+        let total_sub: u64 = substitution.values().sum();
+        let total_ins: u64 = insertion.values().sum();
+        let total_del: u64 = deletion.values().sum();
+        let total_errors = total_sub + total_ins + total_del;
+        let total_observed: u64 = observed.values().sum();
+
+        // Pr[error_type] = per_base_error_rate * proportion_t
+        let (prop_sub, prop_ins, prop_del) = if total_errors > 0 {
+            (total_sub as f64 / total_errors as f64,
+             total_ins as f64 / total_errors as f64,
+             total_del as f64 / total_errors as f64)
+        } else {
+            (1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0)
+        };
+        let prior_sub = per_base_error_rate * prop_sub;
+        let prior_ins = per_base_error_rate * prop_ins;
+        let prior_del = per_base_error_rate * prop_del;
 
         let mut scores: Vec<u8> = observed.keys().copied().collect();
         scores.sort();
         scores.dedup();
         let mut out = String::new();
-        writeln!(out, "qscore,empirical_qscore,num_observed,num_substitution,num_insertion,num_deletion,normalized_substitution_rate,normalized_insertion_rate,normalized_deletion_rate,normalized_error_rate").unwrap();
+        writeln!(out, "qscore,empirical_qscore,num_observed,num_substitution,num_insertion,num_deletion,bayesian_substitution_rate,bayesian_insertion_rate,bayesian_deletion_rate,bayesian_error_rate").unwrap();
         for q in scores {
-            let num_observed     = observed.get(&q).copied().unwrap_or(0);
-            let num_substitution = substitution.get(&q).copied().unwrap_or(0);
-            let num_insertion    = insertion.get(&q).copied().unwrap_or(0);
-            let num_deletion     = deletion.get(&q).copied().unwrap_or(0);
-            let num_error = num_substitution + num_insertion + num_deletion;
-            let norm_err = if num_observed > 0 {
-                let raw = num_error as f64 / num_observed as f64;
-                if raw <= 0.0 { 0.0 } else if raw >= 1.0 { 1.0 } else { sigmoid(logit(raw) + delta) }
-            } else { 0.0 };
-            // Distribute norm_err proportionally among sub/ins/del.
-            let (norm_sub, norm_ins, norm_del) = if num_error > 0 {
-                let scale = norm_err / num_error as f64;
-                (num_substitution as f64 * scale,
-                 num_insertion    as f64 * scale,
-                 num_deletion     as f64 * scale)
-            } else { (0.0, 0.0, 0.0) };
+            let num_observed = observed.get(&q).copied().unwrap_or(0);
+            let num_sub      = substitution.get(&q).copied().unwrap_or(0);
+            let num_ins      = insertion.get(&q).copied().unwrap_or(0);
+            let num_del      = deletion.get(&q).copied().unwrap_or(0);
+
+            // Pr[Q] and Pr[Q | error_type]
+            let pr_q           = if total_observed > 0 { num_observed as f64 / total_observed as f64 } else { 0.0 };
+            let pr_q_given_sub = if total_sub > 0 { num_sub as f64 / total_sub as f64 } else { 0.0 };
+            let pr_q_given_ins = if total_ins > 0 { num_ins as f64 / total_ins as f64 } else { 0.0 };
+            let pr_q_given_del = if total_del > 0 { num_del as f64 / total_del as f64 } else { 0.0 };
+
+            // Pr[error_type | Q] = Pr[Q | error_type] * Pr[error_type] / Pr[Q]
+            let (norm_sub, norm_ins, norm_del, norm_err) = if pr_q > 0.0 {
+                let ns = (pr_q_given_sub * prior_sub / pr_q).min(1.0);
+                let ni = (pr_q_given_ins * prior_ins / pr_q).min(1.0);
+                let nd = (pr_q_given_del * prior_del / pr_q).min(1.0);
+                let ne = (ns + ni + nd).min(1.0);
+                (ns, ni, nd, ne)
+            } else {
+                (0.0, 0.0, 0.0, 0.0)
+            };
+
             let empirical_q = if norm_err > 0.0 { -10.0 * norm_err.log10() } else { f64::INFINITY };
             writeln!(out, "{},{:.4},{},{},{},{},{:.6},{:.6},{:.6},{:.6}",
                 q, empirical_q,
-                num_observed, num_substitution, num_insertion, num_deletion,
+                num_observed, num_sub, num_ins, num_del,
                 norm_sub, norm_ins, norm_del, norm_err,
             ).unwrap();
         }
