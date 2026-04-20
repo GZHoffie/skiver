@@ -19,8 +19,8 @@ import "./App.css";
 const DEFAULT_SKETCH: SketchParams = {
   input_files: [],
   output_path: "",
-  k: 19,
-  v: 19,
+  k: 21,
+  v: 13,
   c: null,
   trim_front: 0,
   trim_back: 0,
@@ -30,8 +30,8 @@ const DEFAULT_SKETCH: SketchParams = {
 const DEFAULT_ANALYZE: AnalyzeParams = {
   kvmer_path: "",
   output_prefix: "",
-  k: 19,
-  v: 19,
+  k: 21,
+  v: 13,
   lower_bound: null,
   forward_only: false,
   use_all: false,

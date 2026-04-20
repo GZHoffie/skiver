@@ -6,6 +6,12 @@ interface ErrorRateRow {
   "per_base_error_rate_5-95th_percentile": string;
   mean_hazard_rate: number;
   "mean_hazard_rate_5-95th_percentile": string;
+  substitution_rate: number;
+  "substitution_rate_5-95th_percentile": string;
+  insertion_rate: number;
+  "insertion_rate_5-95th_percentile": string;
+  deletion_rate: number;
+  "deletion_rate_5-95th_percentile": string;
   lambda: number;
   "lambda_5-95th_percentile": string;
   beta: number;
@@ -99,6 +105,24 @@ export function SummaryBoxes({ errorRatePath }: Props) {
         value={fmtCoverage(r.true_median_coverage)}
         ci={transformCi(r["true_coverage_5-95th_percentile"], fmtCoverage)}
         description={<>Median coverage of the keys in the (<i>k</i>, <i>v</i>)-mer sketch, corrected by the error rate estimation.</>}
+      />
+      <Box
+        label="Substitution rate"
+        value={fmtPct(r.substitution_rate)}
+        ci={transformCi(r["substitution_rate_5-95th_percentile"], (v) => fmtPct(v))}
+        description={<>Per-base substitution rate.</>}
+      />
+      <Box
+        label="Insertion rate"
+        value={fmtPct(r.insertion_rate)}
+        ci={transformCi(r["insertion_rate_5-95th_percentile"], (v) => fmtPct(v))}
+        description={<>Per-base insertion rate.</>}
+      />
+      <Box
+        label="Deletion rate"
+        value={fmtPct(r.deletion_rate)}
+        ci={transformCi(r["deletion_rate_5-95th_percentile"], (v) => fmtPct(v))}
+        description={<>Per-base deletion rate.</>}
       />
     </div>
   );

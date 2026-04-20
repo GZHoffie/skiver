@@ -55,10 +55,10 @@ def _plot_row(axes, df, count_col, row_title_suffix, target_sum, cmap, normalize
                 xticklabels=COLS, yticklabels=COLS,
                 cbar=True, mask=mask,
                 linewidths=3, linecolor='white',
-                cmap=cmap, ax=ax_heat)
+                vmin=0, cmap=cmap, ax=ax_heat)
 
     normalized_suffix = " (normalized)" if normalize else ""
-    ax_heat.set_title(f"Error spectrum{normalized_suffix} — {row_title_suffix}")
+    ax_heat.set_title(f"Error rate (%) — {row_title_suffix}")
     ax_heat.set_ylabel("Original base")
     ax_heat.set_xlabel("Observed base")
 
