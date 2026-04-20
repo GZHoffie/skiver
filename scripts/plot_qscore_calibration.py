@@ -14,10 +14,10 @@ def plot_qscore_calibration(calibration_file, output_file, log_scale=False, min_
     df = df[df["num_observed"] >= min_coverage].copy()
 
     q_vals = df["qscore"].values
-    sub_rate = df["normalized_substitution_rate"].values
-    ins_rate = df["normalized_insertion_rate"].values
-    del_rate = df["normalized_deletion_rate"].values
-    err_rate = df["normalized_error_rate"].values
+    sub_rate = df["bayesian_substitution_rate"].values
+    ins_rate = df["bayesian_insertion_rate"].values
+    del_rate = df["bayesian_deletion_rate"].values
+    err_rate = df["bayesian_error_rate"].values
     counts   = df["num_observed"].values
 
     q_theory = np.linspace(q_vals.min(), q_vals.max(), 300)

@@ -579,17 +579,6 @@ impl PhredScoreSummary {
         let total_errors = total_sub + total_ins + total_del;
         let total_observed: u64 = observed.values().sum();
 
-        // Pr[error_type] = per_base_error_rate * proportion_t
-        let (prop_sub, prop_ins, prop_del) = if total_errors > 0 {
-            (total_sub as f64 / total_errors as f64,
-             total_ins as f64 / total_errors as f64,
-             total_del as f64 / total_errors as f64)
-        } else {
-            (1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0)
-        };
-        let prior_sub = per_base_error_rate * prop_sub;
-        let prior_ins = per_base_error_rate * prop_ins;
-        let prior_del = per_base_error_rate * prop_del;
 
         let mut scores: Vec<u8> = observed.keys().copied().collect();
         scores.sort();
@@ -602,21 +591,26 @@ impl PhredScoreSummary {
             let num_ins      = insertion.get(&q).copied().unwrap_or(0);
             let num_del      = deletion.get(&q).copied().unwrap_or(0);
 
-            // Pr[Q] and Pr[Q | error_type]
-            let pr_q           = if total_observed > 0 { num_observed as f64 / total_observed as f64 } else { 0.0 };
-            let pr_q_given_sub = if total_sub > 0 { num_sub as f64 / total_sub as f64 } else { 0.0 };
-            let pr_q_given_ins = if total_ins > 0 { num_ins as f64 / total_ins as f64 } else { 0.0 };
-            let pr_q_given_del = if total_del > 0 { num_del as f64 / total_del as f64 } else { 0.0 };
+            let num_error = num_sub + num_ins + num_del;
 
-            // Pr[error_type | Q] = Pr[Q | error_type] * Pr[error_type] / Pr[Q]
-            let (norm_sub, norm_ins, norm_del, norm_err) = if pr_q > 0.0 {
-                let ns = (pr_q_given_sub * prior_sub / pr_q).min(1.0);
-                let ni = (pr_q_given_ins * prior_ins / pr_q).min(1.0);
-                let nd = (pr_q_given_del * prior_del / pr_q).min(1.0);
-                let ne = (ns + ni + nd).min(1.0);
-                (ns, ni, nd, ne)
+            // Pr[error | Q] = Pr[Q | error] * Pr[error] / Pr[Q], clamped to [0,1].
+            // Pr[Q | error] = num_error_at_Q / total_errors
+            // Pr[error]     = per_base_error_rate
+            // Pr[Q]         = num_observed / total_observed
+            let norm_err = if total_errors > 0 && num_observed > 0 {
+                let pr_q_given_error = num_error as f64 / total_errors as f64;
+                let pr_q = num_observed as f64 / total_observed as f64;
+                (pr_q_given_error * per_base_error_rate / pr_q).min(1.0)
             } else {
-                (0.0, 0.0, 0.0, 0.0)
+                0.0
+            };
+
+            // Distribute norm_err by proportion of each error type at this Q score.
+            let (norm_sub, norm_ins, norm_del) = if num_error > 0 {
+                let scale = norm_err / num_error as f64;
+                (num_sub as f64 * scale, num_ins as f64 * scale, num_del as f64 * scale)
+            } else {
+                (0.0, 0.0, 0.0)
             };
 
             let empirical_q = if norm_err > 0.0 { -10.0 * norm_err.log10() } else { f64::INFINITY };
