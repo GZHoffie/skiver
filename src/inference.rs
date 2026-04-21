@@ -15,6 +15,18 @@ use rand::Rng;
  * Each field is a tuple of (estimate, (5th_percentile, 95th_percentile))
  * where the confidence interval is estimated using bootstrap
  */
+/// Per-GC-content-range Weibull calibration: lambda, beta, and per-base error rate.
+pub struct GCContentWeibullCalibration {
+    pub gc_content_min: u8,
+    pub gc_content_max: u8,
+    pub lambda: f64,
+    pub beta: f64,
+    /// 1 - exp(-lambda)
+    pub per_base_error_rate: f64,
+    pub num_correct: u64,
+    pub num_error: u64,
+}
+
 /// Per-Q-score Weibull calibration: lambda_Q, beta_Q, and per-base error rate.
 pub struct QscoreWeibullCalibration {
     pub qscore: u8,
@@ -834,6 +846,77 @@ impl ErrorAnalyzer {
         result
     }
 
+    /// Fit a Weibull hazard model for each non-overlapping GC content bin.
+    /// Bins tile [0, 101) with width gc_content_step: [0,s), [s,2s), ...
+    /// With the default step=1, each bin covers exactly one integer GC% value.
+    /// gc_content_max in the output is exclusive (e.g. step=2: "48,50" covers gc in {48, 49}).
+    pub fn calibrate_gc_content_weibull(&self, stats: &KVmerStats, indices: &Vec<usize>) -> Vec<GCContentWeibullCalibration> {
+        let v = stats.v as usize;
+        let v_min = 1 + self.args.ignore_smallest_t;
+        let v_max = v.saturating_sub(self.args.ignore_largest_t);
+        let step = self.args.gc_content_step.max(1) as u8;
+
+        let mut correct_pos: HashMap<(u8, u8), u64> = HashMap::new();
+        let mut error_pos: HashMap<(u8, u8), u64> = HashMap::new();
+        for &i in indices {
+            for (&key, &c) in &stats.gc_content_summary.correct_pos_per_key[i] {
+                *correct_pos.entry(key).or_insert(0) += c;
+            }
+            for (&key, &e) in &stats.gc_content_summary.error_pos_per_key[i] {
+                *error_pos.entry(key).or_insert(0) += e;
+            }
+        }
+
+        let mut result = Vec::new();
+        let mut gc_min: u8 = 0;
+        while gc_min <= 100 {
+            let gc_max = gc_min.saturating_add(step).min(101);
+
+            let mut pos_correct: HashMap<u8, u64> = HashMap::new();
+            let mut pos_error: HashMap<u8, u64> = HashMap::new();
+            for gc in gc_min..gc_max {
+                for p in (v_min - 1)..v_max {
+                    if let Some(&c) = correct_pos.get(&(gc, p as u8)) {
+                        *pos_correct.entry(p as u8).or_insert(0) += c;
+                    }
+                    if let Some(&e) = error_pos.get(&(gc, p as u8)) {
+                        *pos_error.entry(p as u8).or_insert(0) += e;
+                    }
+                }
+            }
+
+            let mut hazard_ratios: Vec<f32> = Vec::new();
+            let mut total_correct = 0u64;
+            let mut total_error = 0u64;
+            for p in (v_min - 1)..v_max {
+                let c = pos_correct.get(&(p as u8)).copied().unwrap_or(0);
+                let e = pos_error.get(&(p as u8)).copied().unwrap_or(0);
+                total_correct += c;
+                total_error += e;
+                let tot = c + e;
+                hazard_ratios.push(if tot > 0 { e as f32 / tot as f32 } else { 0.0 });
+            }
+
+            if total_correct + total_error > 0 {
+                let (lambda, beta) = self.fit_hazard_ratio(&hazard_ratios);
+                let per_base_error_rate = 1.0 - (-(lambda as f64)).exp();
+                result.push(GCContentWeibullCalibration {
+                    gc_content_min: gc_min,
+                    gc_content_max: gc_max,
+                    lambda: lambda as f64,
+                    beta: beta as f64,
+                    per_base_error_rate,
+                    num_correct: total_correct,
+                    num_error: total_error,
+                });
+            }
+
+            if gc_max == 101 { break; }
+            gc_min = gc_max;
+        }
+        result
+    }
+
     pub fn analyze(&self, stats: &KVmerStats) -> ErrorSpectrum {
         // exclude the hazard ratio outliers
         let indices = if !self.args.use_all {
@@ -889,6 +972,19 @@ impl ErrorAnalyzer {
                 ));
             }
             fs::write(format!("{}.summary_phred.csv", prefix), &phred_csv).unwrap();
+
+            // Per-GC-content-range Weibull calibration
+            let gc_weibull = self.calibrate_gc_content_weibull(stats, &indices);
+            let mut gc_csv = String::from("gc_content_min,gc_content_max_exclusive,lambda,beta,per_base_error_rate,num_correct,num_error\n");
+            for cal in &gc_weibull {
+                gc_csv.push_str(&format!(
+                    "{},{},{:.6},{:.6},{:.6},{},{}\n",
+                    cal.gc_content_min, cal.gc_content_max,
+                    cal.lambda, cal.beta, cal.per_base_error_rate,
+                    cal.num_correct, cal.num_error,
+                ));
+            }
+            fs::write(format!("{}.summary_gc_content.csv", prefix), &gc_csv).unwrap();
         }
 
         // estimate key coverage

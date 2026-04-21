@@ -360,6 +360,51 @@ impl PhredScoreSummary {
     }
 }
 
+/// GC-content error calibration statistics.
+/// Stores per-key correct/error counts indexed by (gc_content_percent, 0-based position in value).
+/// Uses the same hazard model as PhredScoreSummary: position p is only recorded when all
+/// positions 0..p-1 matched consensus.
+pub struct GCContentSummary {
+    /// Per-key correct counts indexed by (gc_content %, 0-based position in value).
+    pub correct_pos_per_key: Vec<HashMap<(u8, u8), u64>>,
+    /// Per-key error counts indexed by (gc_content %, 0-based position in value).
+    pub error_pos_per_key: Vec<HashMap<(u8, u8), u64>>,
+}
+
+impl GCContentSummary {
+    pub fn new() -> Self {
+        GCContentSummary {
+            correct_pos_per_key: Vec::new(),
+            error_pos_per_key: Vec::new(),
+        }
+    }
+
+    pub fn update(&mut self, consensus: u64, value_size: u8, value_map: &HashMap<u64, Vec<ValueInfo>>) {
+        let mut key_correct_pos: HashMap<(u8, u8), u64> = HashMap::new();
+        let mut key_error_pos: HashMap<(u8, u8), u64> = HashMap::new();
+        for (value, info_list) in value_map {
+            for info in info_list {
+                if info.qual.is_empty() {
+                    continue;
+                }
+                for p in 0..value_size as usize {
+                    let bit_shift = 2 * (value_size as usize - 1 - p);
+                    let value_base     = (value     >> bit_shift) & 0b11;
+                    let consensus_base = (consensus >> bit_shift) & 0b11;
+                    if value_base == consensus_base {
+                        *key_correct_pos.entry((info.gc_content, p as u8)).or_insert(0) += 1;
+                    } else {
+                        *key_error_pos.entry((info.gc_content, p as u8)).or_insert(0) += 1;
+                        break;
+                    }
+                }
+            }
+        }
+        self.correct_pos_per_key.push(key_correct_pos);
+        self.error_pos_per_key.push(key_error_pos);
+    }
+}
+
 /// Read-position error calibration statistics.
 /// Stores per-key counts of correct/erroneous bases indexed by position from the
 /// start or end of the read.
