@@ -27,10 +27,10 @@ pub struct SketchArgs {
     #[clap(multiple=true, help_heading = "INPUT", help = "fasta/fastq files; gzip optional.")]
     pub files: Vec<String>,
 
-    #[clap(short, default_value_t = 19, help_heading = "ALGORITHM", help ="Length of keys.")]
+    #[clap(short, default_value_t = 17, help_heading = "ALGORITHM", help ="Length of keys.")]
     pub k: u8,
 
-    #[clap(short, default_value_t = 19, help_heading = "ALGORITHM", help ="Length of values.")]
+    #[clap(short, default_value_t = 13, help_heading = "ALGORITHM", help ="Length of values.")]
     pub v: u8,
 
     #[clap(short, help_heading = "ALGORITHM", help = "Subsampling rate. If not set, automatically determined as ceiling(total_input_size / 16G) * 1000 (decompressed size estimated as 4x for .gz files).")]
@@ -58,10 +58,10 @@ pub struct AnalyzeArgs {
     #[clap(multiple=true, help_heading = "INPUT", help = "fasta/fastq files; gzip optional.")]
     pub files: Vec<String>,
 
-    #[clap(short = 'k', default_value_t = 19, help_heading = "ALGORITHM", help ="Length of keys.")]
+    #[clap(short = 'k', default_value_t = 17, help_heading = "ALGORITHM", help ="Length of keys.")]
     pub k: u8,
 
-    #[clap(short = 'v', default_value_t = 19, help_heading = "ALGORITHM", help ="Length of values.")]
+    #[clap(short = 'v', default_value_t = 13, help_heading = "ALGORITHM", help ="Length of values.")]
     pub v: u8,
 
     #[clap(short = 'c', help_heading = "ALGORITHM", help = "Subsampling rate. If not set, automatically determined as ceiling(total_input_size / 16G) * 1000 (decompressed size estimated as 4x for .gz files).")]

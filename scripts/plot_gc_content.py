@@ -53,8 +53,8 @@ def plot_gc_content(gc_content_file, output_file, log_scale=False, min_bases=500
         df_hist["gc_content_mid"], df_hist["num_total"],
         width=bin_width * 0.9, color=color_line, alpha=0.7,
     )
-    ax_hist.axhline(min_bases, color='indianred', linestyle='--', linewidth=1,
-                    label=f"min_bases = {min_bases}")
+    #ax_hist.axhline(min_bases, color='indianred', linestyle='--', linewidth=1,
+    #                label=f"min_bases = {min_bases}")
     ax_hist.set_xlabel("GC content (%)")
     ax_hist.set_ylabel("# bases")
     ax_hist.legend(frameon=False, fontsize=8)

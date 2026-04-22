@@ -15,29 +15,6 @@ use rand::Rng;
  * Each field is a tuple of (estimate, (5th_percentile, 95th_percentile))
  * where the confidence interval is estimated using bootstrap
  */
-/// Per-GC-content-range Weibull calibration: lambda, beta, and per-base error rate.
-pub struct GCContentWeibullCalibration {
-    pub gc_content_min: u8,
-    pub gc_content_max: u8,
-    pub lambda: f64,
-    pub beta: f64,
-    /// 1 - exp(-lambda)
-    pub per_base_error_rate: f64,
-    pub num_correct: u64,
-    pub num_error: u64,
-}
-
-/// Per-Q-score Weibull calibration: lambda_Q, beta_Q, and per-base error rate.
-pub struct QscoreWeibullCalibration {
-    pub qscore: u8,
-    pub lambda: f64,
-    pub beta: f64,
-    /// 1 - exp(-lambda_Q)
-    pub per_base_error_rate: f64,
-    pub num_correct: u64,
-    pub num_error: u64,
-}
-
 pub struct ErrorSpectrum {
     // estimated Weibull parameters
     pub estimated_lambda: (f32, (f32, f32)),
@@ -812,152 +789,6 @@ impl ErrorAnalyzer {
     }
 
 
-    /// For each observed Phred score, compute the empirical error rate using only
-    /// inlier keys (filtered by `find_hazard_ratio_outliers`), then bootstrap over
-    /// those key indices to estimate the 5th–95th percentile confidence interval.
-    ///
-    /// Returns a vector of `(qscore, num_correct, num_error, error_rate, ci_lower, ci_upper)`.
-    /// Estimate per-Q-score Weibull parameters using the same hazard-ratio
-    /// methodology as the global fit.
-    ///
-    /// For each Q-score q and each value position p (0-indexed), the hazard
-    /// ratio h(p | q) = error_at_(q,p) / (correct_at_(q,p) + error_at_(q,p))
-    /// is computed from the inlier keys.  A Weibull model is then fitted to
-    /// the sequence h(p=v_min-1 | q), …, h(p=v_max-1 | q), yielding lambda_Q
-    /// and beta_Q.  The per-base error rate is 1 − exp(−lambda_Q).
-    pub fn calibrate_qscores_weibull(&self, stats: &KVmerStats, indices: &Vec<usize>) -> Vec<QscoreWeibullCalibration> {
-        let v = stats.v as usize;
-        let v_min = 1 + self.args.ignore_smallest_t;   // 1-indexed, inclusive
-        let v_max = v.saturating_sub(self.args.ignore_largest_t); // 1-indexed, inclusive
-
-        // Aggregate per-(qscore, 0-based-position) counts over inlier keys.
-        let mut correct_pos: HashMap<(u8, u8), u64> = HashMap::new();
-        let mut error_pos: HashMap<(u8, u8), u64> = HashMap::new();
-
-        for &i in indices {
-            for (&key, &c) in &stats.phred_summary.correct_pos_per_key[i] {
-                *correct_pos.entry(key).or_insert(0) += c;
-            }
-            for (&key, &e) in &stats.phred_summary.error_pos_per_key[i] {
-                *error_pos.entry(key).or_insert(0) += e;
-            }
-        }
-
-        // Collect all observed Q-scores.
-        let mut qscores: Vec<u8> = correct_pos.keys().chain(error_pos.keys())
-            .map(|&(q, _)| q)
-            .collect();
-        qscores.sort_unstable();
-        qscores.dedup();
-
-        let mut result = Vec::new();
-        for q in qscores {
-            // Build hazard-ratio sequence for positions p = v_min-1 .. v_max-1 (0-indexed).
-            let mut hazard_ratios: Vec<Option<f32>> = Vec::new();
-            let mut total_correct = 0u64;
-            let mut total_error   = 0u64;
-
-            for p in (v_min - 1)..v_max {
-                let c = *correct_pos.get(&(q, p as u8)).unwrap_or(&0);
-                let e = *error_pos.get(&(q, p as u8)).unwrap_or(&0);
-                total_correct += c;
-                total_error   += e;
-                let total = c + e;
-                hazard_ratios.push(if total > 0 { Some(e as f32 / total as f32) } else { None });
-            }
-
-            if total_correct + total_error == 0 {
-                continue;
-            }
-
-            //let lambda = self.fit_lambda_given_beta(&hazard_ratios, global_beta);
-            let (lambda, beta) = self.fit_hazard_ratio(&hazard_ratios);
-            let per_base_error_rate = 1.0 - (-(lambda as f64)).exp();
-
-            result.push(QscoreWeibullCalibration {
-                qscore: q,
-                lambda: lambda as f64,
-                beta: beta as f64,
-                per_base_error_rate,
-                num_correct: total_correct,
-                num_error: total_error,
-            });
-        }
-        result
-    }
-
-    /// Fit a Weibull hazard model for each non-overlapping GC content bin.
-    /// Bins tile [0, 101) with width gc_content_step: [0,s), [s,2s), ...
-    /// With the default step=1, each bin covers exactly one integer GC% value.
-    /// gc_content_max in the output is exclusive (e.g. step=2: "48,50" covers gc in {48, 49}).
-    pub fn calibrate_gc_content_weibull(&self, stats: &KVmerStats, indices: &Vec<usize>) -> Vec<GCContentWeibullCalibration> {
-        let v = stats.v as usize;
-        let v_min = 1 + self.args.ignore_smallest_t;
-        let v_max = v.saturating_sub(self.args.ignore_largest_t);
-        let step = self.args.gc_content_step.max(1) as u8;
-
-        let mut correct_pos: HashMap<(u8, u8), u64> = HashMap::new();
-        let mut error_pos: HashMap<(u8, u8), u64> = HashMap::new();
-        for &i in indices {
-            for (&key, &c) in &stats.gc_content_summary.correct_pos_per_key[i] {
-                *correct_pos.entry(key).or_insert(0) += c;
-            }
-            for (&key, &e) in &stats.gc_content_summary.error_pos_per_key[i] {
-                *error_pos.entry(key).or_insert(0) += e;
-            }
-        }
-
-        let mut result = Vec::new();
-        let mut gc_min: u8 = 0;
-        while gc_min <= 100 {
-            let gc_max = gc_min.saturating_add(step).min(101);
-
-            let mut pos_correct: HashMap<u8, u64> = HashMap::new();
-            let mut pos_error: HashMap<u8, u64> = HashMap::new();
-            for gc in gc_min..gc_max {
-                for p in (v_min - 1)..v_max {
-                    if let Some(&c) = correct_pos.get(&(gc, p as u8)) {
-                        *pos_correct.entry(p as u8).or_insert(0) += c;
-                    }
-                    if let Some(&e) = error_pos.get(&(gc, p as u8)) {
-                        *pos_error.entry(p as u8).or_insert(0) += e;
-                    }
-                }
-            }
-
-            let mut hazard_ratios: Vec<Option<f32>> = Vec::new();
-            let mut total_correct = 0u64;
-            let mut total_error = 0u64;
-            for p in (v_min - 1)..v_max {
-                let c = pos_correct.get(&(p as u8)).copied().unwrap_or(0);
-                let e = pos_error.get(&(p as u8)).copied().unwrap_or(0);
-                total_correct += c;
-                total_error += e;
-                let tot = c + e;
-                hazard_ratios.push(if tot > 0 { Some(e as f32 / tot as f32) } else { None });
-            }
-
-            if total_correct + total_error > 0 {
-                //let lambda = self.fit_lambda_given_beta(&hazard_ratios, global_beta);
-                let (lambda, beta) = self.fit_hazard_ratio(&hazard_ratios);
-                let per_base_error_rate = 1.0 - (-(lambda as f64)).exp();
-                result.push(GCContentWeibullCalibration {
-                    gc_content_min: gc_min,
-                    gc_content_max: gc_max,
-                    lambda: lambda as f64,
-                    beta: beta as f64,
-                    per_base_error_rate,
-                    num_correct: total_correct,
-                    num_error: total_error,
-                });
-            }
-
-            if gc_max == 101 { break; }
-            gc_min = gc_max;
-        }
-        result
-    }
-
     pub fn analyze(&self, stats: &KVmerStats) -> ErrorSpectrum {
         // exclude the hazard ratio outliers
         let indices = if !self.args.use_all {
@@ -1003,30 +834,20 @@ impl ErrorAnalyzer {
             fs::write(format!("{}.summary_error_spectrum_dependence_on_t.csv", prefix), stats.error_spectrum.to_dependence_on_t_csv(Some(&indices), self.args.k as usize, self.args.ignore_smallest_t, self.args.ignore_largest_t)).unwrap();
             fs::write(format!("{}.summary_read_position.csv", prefix), stats.read_position_summary.to_csv(Some(&indices))).unwrap();
 
-            // Per-Q-score Weibull calibration
-            let qscore_weibull = self.calibrate_qscores_weibull(stats, &indices);
-            let mut phred_csv = String::from("qscore,lambda,beta,per_base_error_rate,num_correct,num_error\n");
-            for cal in &qscore_weibull {
-                phred_csv.push_str(&format!(
-                    "{},{:.6},{:.6},{:.6},{},{}\n",
-                    cal.qscore, cal.lambda, cal.beta, cal.per_base_error_rate,
-                    cal.num_correct, cal.num_error,
-                ));
-            }
-            fs::write(format!("{}.summary_phred.csv", prefix), &phred_csv).unwrap();
+            let v = stats.v as usize;
+            let v_min = 1 + self.args.ignore_smallest_t;
+            let v_max = v.saturating_sub(self.args.ignore_largest_t);
+            let k = self.args.k as usize;
+            let step = self.args.gc_content_step.max(1) as u8;
 
-            // Per-GC-content-range Weibull calibration
-            let gc_weibull = self.calibrate_gc_content_weibull(stats, &indices);
-            let mut gc_csv = String::from("gc_content_min,gc_content_max_exclusive,lambda,beta,per_base_error_rate,num_correct,num_error\n");
-            for cal in &gc_weibull {
-                gc_csv.push_str(&format!(
-                    "{},{},{:.6},{:.6},{:.6},{},{}\n",
-                    cal.gc_content_min, cal.gc_content_max,
-                    cal.lambda, cal.beta, cal.per_base_error_rate,
-                    cal.num_correct, cal.num_error,
-                ));
-            }
-            fs::write(format!("{}.summary_gc_content.csv", prefix), &gc_csv).unwrap();
+            fs::write(
+                format!("{}.summary_phred.csv", prefix),
+                stats.phred_summary.to_csv(&indices, v_min, v_max, beta, k),
+            ).unwrap();
+            fs::write(
+                format!("{}.summary_gc_content.csv", prefix),
+                stats.gc_content_summary.to_csv(&indices, v_min, v_max, beta, k, step),
+            ).unwrap();
         }
 
         // estimate key coverage

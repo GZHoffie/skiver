@@ -1,6 +1,28 @@
 use std::collections::HashMap;
 use crate::types::{EditOperation, ALL_OPERATIONS, SEQ_TO_BYTE, SEQ_TO_CHAR, ValueInfo, NeighborInfo};
 use crate::utils::_get_neighbors;
+use crate::constants::EPSILON;
+
+/// Estimate lambda from hazard ratios with beta held fixed.
+/// Uses the cloglog linearisation: log(-log(1-h(t))) ≈ (beta-1)*log(t) + log(lambda*beta).
+/// Positions where the denominator was zero (None) are skipped.
+fn fit_lambda_given_beta(hazard_ratios: &[Option<f32>], beta: f32, k: usize) -> f32 {
+    if beta <= 0.0 {
+        return 0.0;
+    }
+    let intercepts: Vec<f32> = hazard_ratios.iter().enumerate()
+        .filter_map(|(i, &hr)| hr.map(|h| {
+            let y = (-(-(h.clamp(EPSILON, 1.0 - EPSILON))).ln_1p()).ln();
+            let x = (i as f32 + k as f32).ln();
+            y - (beta - 1.0) * x
+        }))
+        .collect();
+    if intercepts.is_empty() {
+        return 0.0;
+    }
+    let mean_intercept = intercepts.iter().sum::<f32>() / intercepts.len() as f32;
+    (mean_intercept.exp() / beta).max(0.0)
+}
 
 /// Per-key error-rate statistics.
 /// Corresponds to `KVmerStats` fields: `consensus_counts`, `total_counts`,
@@ -358,6 +380,50 @@ impl PhredScoreSummary {
         self.correct_pos_per_key.push(key_correct_pos);
         self.error_pos_per_key.push(key_error_pos);
     }
+
+    pub fn to_csv(&self, indices: &[usize], v_min: usize, v_max: usize, global_beta: f32, k: usize) -> String {
+        let mut correct_pos: HashMap<(u8, u8), u64> = HashMap::new();
+        let mut error_pos: HashMap<(u8, u8), u64> = HashMap::new();
+        for &i in indices {
+            for (&key, &c) in &self.correct_pos_per_key[i] {
+                *correct_pos.entry(key).or_insert(0) += c;
+            }
+            for (&key, &e) in &self.error_pos_per_key[i] {
+                *error_pos.entry(key).or_insert(0) += e;
+            }
+        }
+
+        let mut qscores: Vec<u8> = correct_pos.keys().chain(error_pos.keys())
+            .map(|&(q, _)| q)
+            .collect();
+        qscores.sort_unstable();
+        qscores.dedup();
+
+        let mut csv = String::from("qscore,lambda,beta,per_base_error_rate,num_correct,num_error\n");
+        for q in qscores {
+            let mut hazard_ratios: Vec<Option<f32>> = Vec::new();
+            let mut total_correct = 0u64;
+            let mut total_error = 0u64;
+            for p in (v_min - 1)..v_max {
+                let c = *correct_pos.get(&(q, p as u8)).unwrap_or(&0);
+                let e = *error_pos.get(&(q, p as u8)).unwrap_or(&0);
+                total_correct += c;
+                total_error += e;
+                let total = c + e;
+                hazard_ratios.push(if total > 0 { Some(e as f32 / total as f32) } else { None });
+            }
+            if total_correct + total_error == 0 {
+                continue;
+            }
+            let lambda = fit_lambda_given_beta(&hazard_ratios, global_beta, k);
+            let per_base_error_rate = 1.0 - (-(lambda as f64)).exp();
+            csv.push_str(&format!(
+                "{},{:.6},{:.6},{:.6},{},{}\n",
+                q, lambda, global_beta, per_base_error_rate, total_correct, total_error,
+            ));
+        }
+        csv
+    }
 }
 
 /// GC-content error calibration statistics.
@@ -402,6 +468,63 @@ impl GCContentSummary {
         }
         self.correct_pos_per_key.push(key_correct_pos);
         self.error_pos_per_key.push(key_error_pos);
+    }
+
+    pub fn to_csv(&self, indices: &[usize], v_min: usize, v_max: usize, global_beta: f32, k: usize, step: u8) -> String {
+        let mut correct_pos: HashMap<(u8, u8), u64> = HashMap::new();
+        let mut error_pos: HashMap<(u8, u8), u64> = HashMap::new();
+        for &i in indices {
+            for (&key, &c) in &self.correct_pos_per_key[i] {
+                *correct_pos.entry(key).or_insert(0) += c;
+            }
+            for (&key, &e) in &self.error_pos_per_key[i] {
+                *error_pos.entry(key).or_insert(0) += e;
+            }
+        }
+
+        let mut csv = String::from("gc_content_min,gc_content_max_exclusive,lambda,beta,per_base_error_rate,num_correct,num_error\n");
+        let mut gc_min: u8 = 0;
+        while gc_min <= 100 {
+            let gc_max = gc_min.saturating_add(step).min(101);
+
+            let mut pos_correct: HashMap<u8, u64> = HashMap::new();
+            let mut pos_error: HashMap<u8, u64> = HashMap::new();
+            for gc in gc_min..gc_max {
+                for p in (v_min - 1)..v_max {
+                    if let Some(&c) = correct_pos.get(&(gc, p as u8)) {
+                        *pos_correct.entry(p as u8).or_insert(0) += c;
+                    }
+                    if let Some(&e) = error_pos.get(&(gc, p as u8)) {
+                        *pos_error.entry(p as u8).or_insert(0) += e;
+                    }
+                }
+            }
+
+            let mut hazard_ratios: Vec<Option<f32>> = Vec::new();
+            let mut total_correct = 0u64;
+            let mut total_error = 0u64;
+            for p in (v_min - 1)..v_max {
+                let c = pos_correct.get(&(p as u8)).copied().unwrap_or(0);
+                let e = pos_error.get(&(p as u8)).copied().unwrap_or(0);
+                total_correct += c;
+                total_error += e;
+                let tot = c + e;
+                hazard_ratios.push(if tot > 0 { Some(e as f32 / tot as f32) } else { None });
+            }
+
+            if total_correct + total_error > 0 {
+                let lambda = fit_lambda_given_beta(&hazard_ratios, global_beta, k);
+                let per_base_error_rate = 1.0 - (-(lambda as f64)).exp();
+                csv.push_str(&format!(
+                    "{},{},{:.6},{:.6},{:.6},{},{}\n",
+                    gc_min, gc_max, lambda, global_beta, per_base_error_rate, total_correct, total_error,
+                ));
+            }
+
+            if gc_max == 101 { break; }
+            gc_min = gc_max;
+        }
+        csv
     }
 }
 
