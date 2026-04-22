@@ -17,7 +17,7 @@ def plot_qscore_calibration(calibration_file, output_file, log_scale=False, min_
     df = df[df["num_total"] >= min_coverage]
 
     q_vals = df["qscore"].values
-    emp_rate = df["error_rate"].values
+    emp_rate = df["per_base_error_rate"].values
     #ci_lower = df["5th_percentile"].values
     #ci_upper = df["95th_percentile"].values
     counts   = df["num_total"].values

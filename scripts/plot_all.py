@@ -40,6 +40,7 @@ from plot_spectrum import plot_spectrum
 from plot_coverage import plot_coverage_histogram
 from plot_hazard_survival_rate import plot_hazard_survival_rate
 from plot_qscore_calibration import plot_qscore_calibration
+from plot_gc_content import plot_gc_content
 from plot_read_position import plot_read_position
 from plot_sbs96_spectrum import plot_sbs96_spectrum
 from plot_error_spectrum_dependence_on_t import plot_error_spectrum_dependence_on_t
@@ -59,7 +60,7 @@ def _exists(path):
 def generate_plots(input_prefix, output_prefix,
                    normalize=False, log_scale=False,
                    t_min=1, t_max=100,
-                   num_bases=100, min_coverage=100):
+                   num_bases=100, min_coverage=100, min_bases=500):
     """Generate all available plots for a single *input_prefix*."""
 
     report   = f"{input_prefix}.summary_error_rate.csv"
@@ -68,6 +69,7 @@ def generate_plots(input_prefix, output_prefix,
     spectrum = f"{input_prefix}.summary_error_spectrum.csv"
     dep_t    = f"{input_prefix}.summary_error_spectrum_dependence_on_t.csv"
     phred    = f"{input_prefix}.summary_phred.csv"
+    gc       = f"{input_prefix}.summary_gc_content.csv"
     readpos  = f"{input_prefix}.summary_read_position.csv"
 
     plots = [
@@ -112,6 +114,14 @@ def generate_plots(input_prefix, output_prefix,
                                             f"{output_prefix}_qscore_calibration.png",
                                             log_scale=log_scale,
                                             min_coverage=min_coverage),
+        ),
+        (
+            "GC content error rate",
+            [gc],
+            lambda: plot_gc_content(gc,
+                                    f"{output_prefix}_gc_content.png",
+                                    log_scale=log_scale,
+                                    min_bases=min_bases),
         ),
         (
             "read position error rate",
@@ -166,6 +176,8 @@ def main():
                         help="Number of bases from each end to plot for read position (default: 100).")
     parser.add_argument("--min-coverage", type=int, default=100,
                         help="Minimum coverage for qscore calibration plot (default: 100).")
+    parser.add_argument("--min-bases", type=int, default=500,
+                        help="Minimum bases for GC content line plot (default: 500).")
 
     args = parser.parse_args()
 
@@ -187,7 +199,8 @@ def main():
             t_min=args.t,
             t_max=args.T,
             num_bases=args.num_bases,
-            min_coverage=args.min_coverage
+            min_coverage=args.min_coverage,
+            min_bases=args.min_bases,
         )
 
     print("Done.")

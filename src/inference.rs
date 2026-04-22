@@ -384,42 +384,41 @@ impl ErrorAnalyzer {
 
     /// Assume hazard ratio follows Weibull distribution: hazard ratio = a * (i + k)^b
     #[allow(dead_code)]
-    fn fit_hazard_ratio_weibull_distribution_power_law(&self, hazard_ratios: &Vec<f32>) -> (f32, f32) {
-        // Fit hazard ratio = a * (i + k)^b, or log(hazard ratio) = log(a) + b * log(i + k)
-        let x = hazard_ratios.iter().enumerate().
-            map(|(i, _)| (i as f32 + self.args.k as f32).ln())
-            .collect::<Vec<f32>>();
-        let y = hazard_ratios.iter()
-            .map(|&hr| if hr > 0.0 { hr.ln() } else { 0.0 })
-            .collect::<Vec<f32>>();
-        //let (b, log_a) = Self::linear_fit_f32(&x, &y);
+    fn fit_hazard_ratio_weibull_distribution_power_law(&self, hazard_ratios: &[Option<f32>]) -> (f32, f32) {
+        let pairs: Vec<(f32, f32)> = hazard_ratios.iter().enumerate()
+            .filter_map(|(i, &hr)| hr.map(|h| (
+                (i as f32 + self.args.k as f32).ln(),
+                if h > 0.0 { h.ln() } else { 0.0 },
+            )))
+            .collect();
+        if pairs.is_empty() {
+            return (0.0, 0.0);
+        }
+        let x: Vec<f32> = pairs.iter().map(|&(x, _)| x).collect();
+        let y: Vec<f32> = pairs.iter().map(|&(_, y)| y).collect();
         let (b, log_a) = Self::ridge_fit_f32(&x, &y, 1.);
-        
-        
         let a = log_a.exp();
 
         (a, b)
     }
 
 
-    /// Assume hazard ratio follows discrete Weibull distribution 
+    /// Assume hazard ratio follows discrete Weibull distribution
     /// h(t) = 1 - exp(-lambda * ((t+1)^beta - t^beta))
     /// By approximation, we can fit log(-log(1 - hazard ratio)) \approx log(lambda) + beta * log(t)
-    fn fit_hazard_ratio_weibull_distribution_cloglog(&self, hazard_ratios: &Vec<f32>) -> (f32, f32) {
-        // Fit hazard ratio = a * (i + k)^b, or log(hazard ratio) = log(a) + b * log(i + k)
-        let x = hazard_ratios.iter().enumerate().
-            map(|(i, _)| (i as f32 + self.args.k as f32).ln())
-            .collect::<Vec<f32>>();
-        // complementary log-log, clip hazard ratios to avoid log(0)
-        let y = hazard_ratios.iter()
-            .map(|&hr|
-                (-(- hr.clamp(EPSILON, 1.0 - EPSILON)).ln_1p()).ln())
-            .collect::<Vec<f32>>();
-        //let (b, log_a) = Self::linear_fit_f32(&x, &y);
-        //let (slope, intercept) = Self::ridge_fit_f32(&x, &y, 1.);
+    fn fit_hazard_ratio_weibull_distribution_cloglog(&self, hazard_ratios: &[Option<f32>]) -> (f32, f32) {
+        let pairs: Vec<(f32, f32)> = hazard_ratios.iter().enumerate()
+            .filter_map(|(i, &hr)| hr.map(|h| (
+                (i as f32 + self.args.k as f32).ln(),
+                (-(- h.clamp(EPSILON, 1.0 - EPSILON)).ln_1p()).ln(),
+            )))
+            .collect();
+        if pairs.is_empty() {
+            return (0.0, 1.0);
+        }
+        let x: Vec<f32> = pairs.iter().map(|&(x, _)| x).collect();
+        let y: Vec<f32> = pairs.iter().map(|&(_, y)| y).collect();
         let (slope, intercept) = Self::linear_fit_huber_f32(&x, &y);
-        
-        
         let beta = slope + 1.;
         let lambda = intercept.exp() / beta;
 
@@ -429,32 +428,34 @@ impl ErrorAnalyzer {
     /// Estimate lambda from hazard ratios with beta held fixed.
     /// Uses the cloglog linearisation: log(-log(1-h(t))) ≈ (beta-1)*log(t) + log(lambda*beta)
     /// Solves for the intercept log(lambda*beta) via the mean of per-position residuals.
-    fn fit_lambda_given_beta(&self, hazard_ratios: &Vec<f32>, beta: f32) -> f32 {
-        if hazard_ratios.is_empty() || beta <= 0.0 {
+    fn fit_lambda_given_beta(&self, hazard_ratios: &[Option<f32>], beta: f32) -> f32 {
+        if beta <= 0.0 {
             return 0.0;
         }
         let k = self.args.k as f32;
         let intercepts: Vec<f32> = hazard_ratios.iter().enumerate()
-            .map(|(i, &hr)| {
-                let y = (-(-(hr.clamp(EPSILON, 1.0 - EPSILON))).ln_1p()).ln();
+            .filter_map(|(i, &hr)| hr.map(|h| {
+                let y = (-(-(h.clamp(EPSILON, 1.0 - EPSILON))).ln_1p()).ln();
                 let x = (i as f32 + k).ln();
                 y - (beta - 1.0) * x
-            })
+            }))
             .collect();
+        if intercepts.is_empty() {
+            return 0.0;
+        }
         let mean_intercept = intercepts.iter().sum::<f32>() / intercepts.len() as f32;
         (mean_intercept.exp() / beta).max(0.0)
     }
 
-    fn fit_hazard_ratio_constant(&self, hazard_ratios: &Vec<f32>) -> f32 {
-        let n = hazard_ratios.len();
-        if n == 0 {
+    fn fit_hazard_ratio_constant(&self, hazard_ratios: &[Option<f32>]) -> f32 {
+        let values: Vec<f32> = hazard_ratios.iter().filter_map(|&hr| hr).collect();
+        if values.is_empty() {
             return 0.;
         }
-        let mean = hazard_ratios.iter().sum::<f32>() / hazard_ratios.len() as f32;
-        mean
+        values.iter().sum::<f32>() / values.len() as f32
     }
 
-    fn fit_hazard_ratio(&self, hazard_ratios: &Vec<f32>) -> (f32, f32) {
+    fn fit_hazard_ratio(&self, hazard_ratios: &[Option<f32>]) -> (f32, f32) {
         match self.args.hazard_model.as_str() {
             "weibull" => self.fit_hazard_ratio_weibull_distribution_cloglog(hazard_ratios),
             "constant" => (self.fit_hazard_ratio_constant(hazard_ratios), 1.0),
@@ -467,12 +468,13 @@ impl ErrorAnalyzer {
     /**
      * Estimate the mean hazard rate: 1 - geometric_mean(1 - h(t))
      */
-    fn estimate_mean_hazard_rate(&self, hazard_ratios: &Vec<f32>) -> f32 {
-        let n = hazard_ratios.len();
+    fn estimate_mean_hazard_rate(&self, hazard_ratios: &[Option<f32>]) -> f32 {
+        let values: Vec<f32> = hazard_ratios.iter().filter_map(|&hr| hr).collect();
+        let n = values.len();
         if n == 0 {
             return 0.;
         }
-        let log_survival_product: f32 = hazard_ratios.iter()
+        let log_survival_product: f32 = values.iter()
             .map(|&hr| (1. - hr).clamp(EPSILON, 1.0).ln())
             .sum();
         let mean_hazard_rate = 1. - (log_survival_product / n as f32).exp();
@@ -675,7 +677,7 @@ impl ErrorAnalyzer {
         for _ in 0..self.args.num_experiments {
             let indices_sample = Self::random_subsample_with_replacement(indices, indices.len() as usize);
 
-            let mut hazard_ratios: Vec<f32> = Vec::new();
+            let mut hazard_ratios: Vec<Option<f32>> = Vec::new();
 
             for v in v_min..=v_max {
                 if v - 1 == 0 {
@@ -686,12 +688,18 @@ impl ErrorAnalyzer {
                     y = &stats.error_summary.consensus_up_to_v_counts[(v - 1) as usize];
                 }
 
-                let h = self.calculate_ratio(x, y, &indices_sample);
-                hazard_ratios.push(1. - h);
-                hazard_ratio_list[(v - v_min) as usize].push(1. - h);
+                let xs = self.sum_indices(x, &indices_sample);
+                let hazard = if xs > 0 {
+                    let h = self.calculate_ratio(x, y, &indices_sample);
+                    Some(1. - h)
+                } else {
+                    None
+                };
+                hazard_ratios.push(hazard);
+                if let Some(h) = hazard {
+                    hazard_ratio_list[(v - v_min) as usize].push(h);
+                }
             }
-            // estimate the parameters of the beta distribution
-            //let (alpha, beta) = self.fit_hazard_ratio_beta_distribution(&hazard_ratios, (indices.len() as f32 * self.bootstrap_sample_rate) as usize);
             let (lambda, beta) = self.fit_hazard_ratio(&hazard_ratios);
             lambda_list.push(lambda);
             beta_list.push(beta);
@@ -709,8 +717,15 @@ impl ErrorAnalyzer {
         let mut hazard_ratio_range_list: Vec<(f32, f32)> = Vec::new();
         for v in 0..hazard_ratio_list.len() {
             hazard_ratio_list[v].sort_by(f32::total_cmp);
-            let h_lower = hazard_ratio_list[v][(self.args.num_experiments as f32 * 0.05) as usize];
-            let h_upper = hazard_ratio_list[v][(self.args.num_experiments as f32 * 0.95) as usize];
+            let n = hazard_ratio_list[v].len();
+            let (h_lower, h_upper) = if n == 0 {
+                (0.0, 0.0)
+            } else {
+                (
+                    hazard_ratio_list[v][(n as f32 * 0.05) as usize],
+                    hazard_ratio_list[v][(n as f32 * 0.95) as usize],
+                )
+            };
             hazard_ratio_range_list.push((h_lower, h_upper));
         }
 
@@ -723,11 +738,11 @@ impl ErrorAnalyzer {
 
 
     // returns (estimated_lambda, estimated_beta, hazard_ratios, x_sum, y_sum)
-    pub fn estimate_hazard_ratio(&self, stats: &KVmerStats, indices: &Vec<usize>) -> (f32, f32, Vec<f32>, Vec<u32>, Vec<u32>) {
+    pub fn estimate_hazard_ratio(&self, stats: &KVmerStats, indices: &Vec<usize>) -> (f32, f32, Vec<Option<f32>>, Vec<u32>, Vec<u32>) {
         let mut x: &Vec<u32>;
         let mut y: &Vec<u32>;
 
-        let mut hazard_ratios: Vec<f32> = Vec::new();
+        let mut hazard_ratios: Vec<Option<f32>> = Vec::new();
         let mut x_sum: Vec<u32> = Vec::new();
         let mut y_sum: Vec<u32> = Vec::new();
 
@@ -742,15 +757,20 @@ impl ErrorAnalyzer {
                 y = &stats.error_summary.consensus_up_to_v_counts[(v - 1) as usize];
             }
 
-            let h = self.calculate_ratio(x, y, indices);
-            hazard_ratios.push(1. - h);
-            x_sum.push(self.sum_indices(x, indices));
+            let xs = self.sum_indices(x, indices);
+            let hazard = if xs > 0 {
+                let h = self.calculate_ratio(x, y, indices);
+                Some(1. - h)
+            } else {
+                None
+            };
+            hazard_ratios.push(hazard);
+            x_sum.push(xs);
             y_sum.push(self.sum_indices(y, indices));
         }
 
         let (lambda, beta) = self.fit_hazard_ratio(&hazard_ratios);
-        //println!("Weibull parameters: alpha = {}, beta = {}", a, b);
-        (lambda, beta, hazard_ratios, x_sum, y_sum) 
+        (lambda, beta, hazard_ratios, x_sum, y_sum)
     }
 
     pub fn key_coverage(&self, stats: &KVmerStats, indices: &Vec<usize>) -> (f32, (f32, f32)) {
@@ -805,7 +825,7 @@ impl ErrorAnalyzer {
     /// is computed from the inlier keys.  A Weibull model is then fitted to
     /// the sequence h(p=v_min-1 | q), …, h(p=v_max-1 | q), yielding lambda_Q
     /// and beta_Q.  The per-base error rate is 1 − exp(−lambda_Q).
-    pub fn calibrate_qscores_weibull(&self, stats: &KVmerStats, indices: &Vec<usize>, global_beta: f32) -> Vec<QscoreWeibullCalibration> {
+    pub fn calibrate_qscores_weibull(&self, stats: &KVmerStats, indices: &Vec<usize>) -> Vec<QscoreWeibullCalibration> {
         let v = stats.v as usize;
         let v_min = 1 + self.args.ignore_smallest_t;   // 1-indexed, inclusive
         let v_max = v.saturating_sub(self.args.ignore_largest_t); // 1-indexed, inclusive
@@ -833,7 +853,7 @@ impl ErrorAnalyzer {
         let mut result = Vec::new();
         for q in qscores {
             // Build hazard-ratio sequence for positions p = v_min-1 .. v_max-1 (0-indexed).
-            let mut hazard_ratios: Vec<f32> = Vec::new();
+            let mut hazard_ratios: Vec<Option<f32>> = Vec::new();
             let mut total_correct = 0u64;
             let mut total_error   = 0u64;
 
@@ -843,20 +863,21 @@ impl ErrorAnalyzer {
                 total_correct += c;
                 total_error   += e;
                 let total = c + e;
-                hazard_ratios.push(if total > 0 { e as f32 / total as f32 } else { 0.0 });
+                hazard_ratios.push(if total > 0 { Some(e as f32 / total as f32) } else { None });
             }
 
             if total_correct + total_error == 0 {
                 continue;
             }
 
-            let lambda = self.fit_lambda_given_beta(&hazard_ratios, global_beta);
+            //let lambda = self.fit_lambda_given_beta(&hazard_ratios, global_beta);
+            let (lambda, beta) = self.fit_hazard_ratio(&hazard_ratios);
             let per_base_error_rate = 1.0 - (-(lambda as f64)).exp();
 
             result.push(QscoreWeibullCalibration {
                 qscore: q,
                 lambda: lambda as f64,
-                beta: global_beta as f64,
+                beta: beta as f64,
                 per_base_error_rate,
                 num_correct: total_correct,
                 num_error: total_error,
@@ -869,7 +890,7 @@ impl ErrorAnalyzer {
     /// Bins tile [0, 101) with width gc_content_step: [0,s), [s,2s), ...
     /// With the default step=1, each bin covers exactly one integer GC% value.
     /// gc_content_max in the output is exclusive (e.g. step=2: "48,50" covers gc in {48, 49}).
-    pub fn calibrate_gc_content_weibull(&self, stats: &KVmerStats, indices: &Vec<usize>, global_beta: f32) -> Vec<GCContentWeibullCalibration> {
+    pub fn calibrate_gc_content_weibull(&self, stats: &KVmerStats, indices: &Vec<usize>) -> Vec<GCContentWeibullCalibration> {
         let v = stats.v as usize;
         let v_min = 1 + self.args.ignore_smallest_t;
         let v_max = v.saturating_sub(self.args.ignore_largest_t);
@@ -904,7 +925,7 @@ impl ErrorAnalyzer {
                 }
             }
 
-            let mut hazard_ratios: Vec<f32> = Vec::new();
+            let mut hazard_ratios: Vec<Option<f32>> = Vec::new();
             let mut total_correct = 0u64;
             let mut total_error = 0u64;
             for p in (v_min - 1)..v_max {
@@ -913,17 +934,18 @@ impl ErrorAnalyzer {
                 total_correct += c;
                 total_error += e;
                 let tot = c + e;
-                hazard_ratios.push(if tot > 0 { e as f32 / tot as f32 } else { 0.0 });
+                hazard_ratios.push(if tot > 0 { Some(e as f32 / tot as f32) } else { None });
             }
 
             if total_correct + total_error > 0 {
-                let lambda = self.fit_lambda_given_beta(&hazard_ratios, global_beta);
+                //let lambda = self.fit_lambda_given_beta(&hazard_ratios, global_beta);
+                let (lambda, beta) = self.fit_hazard_ratio(&hazard_ratios);
                 let per_base_error_rate = 1.0 - (-(lambda as f64)).exp();
                 result.push(GCContentWeibullCalibration {
                     gc_content_min: gc_min,
                     gc_content_max: gc_max,
                     lambda: lambda as f64,
-                    beta: global_beta as f64,
+                    beta: beta as f64,
                     per_base_error_rate,
                     num_correct: total_correct,
                     num_error: total_error,
@@ -965,11 +987,12 @@ impl ErrorAnalyzer {
 
             writeln!(writer, "t,num_candidates,num_survival,hazard_ratio,5th_percentile,95th_percentile").expect("Could not write to hazard ratio output file.");
             for v in 0..hazard_ratio.len() {
-                writeln!(writer, "{},{},{},{:.6},{:.6},{:.6}",
+                let hr_str = hazard_ratio[v].map_or_else(|| "NA".to_string(), |h| format!("{:.6}", h));
+                writeln!(writer, "{},{},{},{},{:.6},{:.6}",
                     v + 1 + self.args.ignore_smallest_t + self.args.k as usize,
                     x_sum[v],
                     y_sum[v],
-                    hazard_ratio[v],
+                    hr_str,
                     hazard_ratio_ci[v].0,
                     hazard_ratio_ci[v].1
                 ).expect("Could not write to hazard ratio output file.");
@@ -981,7 +1004,7 @@ impl ErrorAnalyzer {
             fs::write(format!("{}.summary_read_position.csv", prefix), stats.read_position_summary.to_csv(Some(&indices))).unwrap();
 
             // Per-Q-score Weibull calibration
-            let qscore_weibull = self.calibrate_qscores_weibull(stats, &indices, beta);
+            let qscore_weibull = self.calibrate_qscores_weibull(stats, &indices);
             let mut phred_csv = String::from("qscore,lambda,beta,per_base_error_rate,num_correct,num_error\n");
             for cal in &qscore_weibull {
                 phred_csv.push_str(&format!(
@@ -993,7 +1016,7 @@ impl ErrorAnalyzer {
             fs::write(format!("{}.summary_phred.csv", prefix), &phred_csv).unwrap();
 
             // Per-GC-content-range Weibull calibration
-            let gc_weibull = self.calibrate_gc_content_weibull(stats, &indices, beta);
+            let gc_weibull = self.calibrate_gc_content_weibull(stats, &indices);
             let mut gc_csv = String::from("gc_content_min,gc_content_max_exclusive,lambda,beta,per_base_error_rate,num_correct,num_error\n");
             for cal in &gc_weibull {
                 gc_csv.push_str(&format!(
