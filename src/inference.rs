@@ -426,6 +426,25 @@ impl ErrorAnalyzer {
         (lambda, beta)
     }
 
+    /// Estimate lambda from hazard ratios with beta held fixed.
+    /// Uses the cloglog linearisation: log(-log(1-h(t))) ≈ (beta-1)*log(t) + log(lambda*beta)
+    /// Solves for the intercept log(lambda*beta) via the mean of per-position residuals.
+    fn fit_lambda_given_beta(&self, hazard_ratios: &Vec<f32>, beta: f32) -> f32 {
+        if hazard_ratios.is_empty() || beta <= 0.0 {
+            return 0.0;
+        }
+        let k = self.args.k as f32;
+        let intercepts: Vec<f32> = hazard_ratios.iter().enumerate()
+            .map(|(i, &hr)| {
+                let y = (-(-(hr.clamp(EPSILON, 1.0 - EPSILON))).ln_1p()).ln();
+                let x = (i as f32 + k).ln();
+                y - (beta - 1.0) * x
+            })
+            .collect();
+        let mean_intercept = intercepts.iter().sum::<f32>() / intercepts.len() as f32;
+        (mean_intercept.exp() / beta).max(0.0)
+    }
+
     fn fit_hazard_ratio_constant(&self, hazard_ratios: &Vec<f32>) -> f32 {
         let n = hazard_ratios.len();
         if n == 0 {
@@ -786,7 +805,7 @@ impl ErrorAnalyzer {
     /// is computed from the inlier keys.  A Weibull model is then fitted to
     /// the sequence h(p=v_min-1 | q), …, h(p=v_max-1 | q), yielding lambda_Q
     /// and beta_Q.  The per-base error rate is 1 − exp(−lambda_Q).
-    pub fn calibrate_qscores_weibull(&self, stats: &KVmerStats, indices: &Vec<usize>) -> Vec<QscoreWeibullCalibration> {
+    pub fn calibrate_qscores_weibull(&self, stats: &KVmerStats, indices: &Vec<usize>, global_beta: f32) -> Vec<QscoreWeibullCalibration> {
         let v = stats.v as usize;
         let v_min = 1 + self.args.ignore_smallest_t;   // 1-indexed, inclusive
         let v_max = v.saturating_sub(self.args.ignore_largest_t); // 1-indexed, inclusive
@@ -831,13 +850,13 @@ impl ErrorAnalyzer {
                 continue;
             }
 
-            let (lambda, beta) = self.fit_hazard_ratio(&hazard_ratios);
+            let lambda = self.fit_lambda_given_beta(&hazard_ratios, global_beta);
             let per_base_error_rate = 1.0 - (-(lambda as f64)).exp();
 
             result.push(QscoreWeibullCalibration {
                 qscore: q,
                 lambda: lambda as f64,
-                beta: beta as f64,
+                beta: global_beta as f64,
                 per_base_error_rate,
                 num_correct: total_correct,
                 num_error: total_error,
@@ -850,7 +869,7 @@ impl ErrorAnalyzer {
     /// Bins tile [0, 101) with width gc_content_step: [0,s), [s,2s), ...
     /// With the default step=1, each bin covers exactly one integer GC% value.
     /// gc_content_max in the output is exclusive (e.g. step=2: "48,50" covers gc in {48, 49}).
-    pub fn calibrate_gc_content_weibull(&self, stats: &KVmerStats, indices: &Vec<usize>) -> Vec<GCContentWeibullCalibration> {
+    pub fn calibrate_gc_content_weibull(&self, stats: &KVmerStats, indices: &Vec<usize>, global_beta: f32) -> Vec<GCContentWeibullCalibration> {
         let v = stats.v as usize;
         let v_min = 1 + self.args.ignore_smallest_t;
         let v_max = v.saturating_sub(self.args.ignore_largest_t);
@@ -898,13 +917,13 @@ impl ErrorAnalyzer {
             }
 
             if total_correct + total_error > 0 {
-                let (lambda, beta) = self.fit_hazard_ratio(&hazard_ratios);
+                let lambda = self.fit_lambda_given_beta(&hazard_ratios, global_beta);
                 let per_base_error_rate = 1.0 - (-(lambda as f64)).exp();
                 result.push(GCContentWeibullCalibration {
                     gc_content_min: gc_min,
                     gc_content_max: gc_max,
                     lambda: lambda as f64,
-                    beta: beta as f64,
+                    beta: global_beta as f64,
                     per_base_error_rate,
                     num_correct: total_correct,
                     num_error: total_error,
@@ -962,7 +981,7 @@ impl ErrorAnalyzer {
             fs::write(format!("{}.summary_read_position.csv", prefix), stats.read_position_summary.to_csv(Some(&indices))).unwrap();
 
             // Per-Q-score Weibull calibration
-            let qscore_weibull = self.calibrate_qscores_weibull(stats, &indices);
+            let qscore_weibull = self.calibrate_qscores_weibull(stats, &indices, beta);
             let mut phred_csv = String::from("qscore,lambda,beta,per_base_error_rate,num_correct,num_error\n");
             for cal in &qscore_weibull {
                 phred_csv.push_str(&format!(
@@ -974,7 +993,7 @@ impl ErrorAnalyzer {
             fs::write(format!("{}.summary_phred.csv", prefix), &phred_csv).unwrap();
 
             // Per-GC-content-range Weibull calibration
-            let gc_weibull = self.calibrate_gc_content_weibull(stats, &indices);
+            let gc_weibull = self.calibrate_gc_content_weibull(stats, &indices, beta);
             let mut gc_csv = String::from("gc_content_min,gc_content_max_exclusive,lambda,beta,per_base_error_rate,num_correct,num_error\n");
             for cal in &gc_weibull {
                 gc_csv.push_str(&format!(
