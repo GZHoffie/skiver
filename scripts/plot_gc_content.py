@@ -12,6 +12,11 @@ def plot_gc_content(gc_content_file, output_file, log_scale=False, min_bases=500
     df["num_total"] = df["num_correct"] + df["num_error"]
     df["gc_content_mid"] = (df["gc_content_min"] + df["gc_content_max_exclusive"] - 1) / 2.0
 
+    # Parse 5th-95th percentile column ("lo~hi")
+    ci = df["per_base_error_rate_5-95th_percentile"].str.split("~", expand=True).astype(float)
+    df["ci_lower"] = ci[0].values
+    df["ci_upper"] = ci[1].values
+
     df_hist = df.copy()
     df_line = df[df["num_total"] >= min_bases].copy()
 
@@ -23,8 +28,12 @@ def plot_gc_content(gc_content_file, output_file, log_scale=False, min_bases=500
     )
 
     # ── Main panel ────────────────────────────────────────────
+    ax_main.fill_between(
+        df_line["gc_content_mid"], df_line["ci_lower"], df_line["ci_upper"],
+        color=color_line, alpha=0.3, label="5%–95% percentile",
+    )
     ax_main.plot(
-        df_line["gc_content_mid"], df_line["per_base_error_rate"],
+        df_line["gc_content_mid"], df_line["per_base_error_rate_median"],
         color=color_line, linewidth=3, marker='o',
         label="Empirical error rate",
     )

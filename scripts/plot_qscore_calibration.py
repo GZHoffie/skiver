@@ -16,10 +16,15 @@ def plot_qscore_calibration(calibration_file, output_file, log_scale=False, min_
     # Filter by minimum coverage
     df = df[df["num_total"] >= min_coverage]
 
-    q_vals = df["qscore"].values
-    emp_rate = df["per_base_error_rate"].values
-    #ci_lower = df["5th_percentile"].values
-    #ci_upper = df["95th_percentile"].values
+    # Parse 5th-95th percentile column ("lo~hi")
+    ci = df["per_base_error_rate_5-95th_percentile"].str.split("~", expand=True).astype(float)
+    df["ci_lower"] = ci[0].values
+    df["ci_upper"] = ci[1].values
+
+    q_vals   = df["qscore"].values
+    emp_rate = df["per_base_error_rate_median"].values
+    ci_lower = df["ci_lower"].values
+    ci_upper = df["ci_upper"].values
     counts   = df["num_total"].values
 
     # Theoretical Phred error rate: P(error) = 10^(-Q/10)
@@ -40,12 +45,12 @@ def plot_qscore_calibration(calibration_file, output_file, log_scale=False, min_
                  linestyle='--', linewidth=3, label="Theoretical ($10^{-Q/10}$)", zorder=3)
 
     # Confidence band
-    #ax_main.fill_between(q_vals, ci_lower, ci_upper,
-    #                     color=color_empirical, alpha=0.25, label="5%–95% CI")
+    ax_main.fill_between(q_vals, ci_lower, ci_upper,
+                         color=color_empirical, alpha=0.3, label="5%–95% percentile")
 
     # Empirical line
     ax_main.plot(q_vals, emp_rate, color=color_empirical,
-                 linewidth=3, marker='o', 
+                 linewidth=3, marker='o',
                  label="Empirical error rate", zorder=4)
 
     if log_scale:

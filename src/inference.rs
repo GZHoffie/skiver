@@ -842,11 +842,11 @@ impl ErrorAnalyzer {
 
             fs::write(
                 format!("{}.summary_phred.csv", prefix),
-                stats.phred_summary.to_csv(&indices, v_min, v_max, beta, k),
+                stats.phred_summary.to_csv(&indices, v_min, v_max, k, self.args.num_experiments as usize),
             ).unwrap();
             fs::write(
                 format!("{}.summary_gc_content.csv", prefix),
-                stats.gc_content_summary.to_csv(&indices, v_min, v_max, beta, k, step),
+                stats.gc_content_summary.to_csv(&indices, v_min, v_max, k, step, self.args.num_experiments as usize),
             ).unwrap();
         }
 
