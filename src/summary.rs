@@ -1,28 +1,6 @@
 use std::collections::HashMap;
 use crate::types::{EditOperation, ALL_OPERATIONS, SEQ_TO_BYTE, SEQ_TO_CHAR, ValueInfo, NeighborInfo};
 use crate::utils::_get_neighbors;
-use crate::constants::EPSILON;
-use crate::huber::huber_ridge_fit_1d;
-
-/// Fit both lambda and beta jointly from hazard ratios using the cloglog linearisation.
-/// log(-log(1-h(t))) ≈ (beta-1)*log(t) + log(lambda*beta)
-fn fit_lambda_beta(hazard_ratios: &[Option<f32>], k: usize) -> (f32, f32) {
-    let pairs: Vec<(f32, f32)> = hazard_ratios.iter().enumerate()
-        .filter_map(|(i, &hr)| hr.map(|h| (
-            (i as f32 + k as f32).ln(),
-            (-(-(h.clamp(EPSILON, 1.0 - EPSILON))).ln_1p()).ln(),
-        )))
-        .collect();
-    if pairs.is_empty() {
-        return (0.0, 1.0);
-    }
-    let x: Vec<f32> = pairs.iter().map(|&(xi, _)| xi).collect();
-    let y: Vec<f32> = pairs.iter().map(|&(_, yi)| yi).collect();
-    let (slope, intercept) = huber_ridge_fit_1d(&x, &y, 0.1, 0.5, 100, 1e-6);
-    let beta = slope + 1.0;
-    let lambda = (intercept.exp() / beta).max(0.0);
-    (lambda, beta)
-}
 
 /// Returns (median, 5th-percentile, 95th-percentile) after sorting in place.
 fn percentile_stats(values: &mut Vec<f32>) -> (f32, f32, f32) {
@@ -405,86 +383,75 @@ impl PhredScoreSummary {
         self.error_pos_per_key.push(key_error_pos);
     }
 
-    pub fn to_csv(&self, indices: &[usize], v_min: usize, v_max: usize, k: usize, num_experiments: usize) -> String {
-        // Aggregate over all indices for point estimates and totals.
-        let mut correct_pos: HashMap<(u8, u8), u64> = HashMap::new();
-        let mut error_pos: HashMap<(u8, u8), u64> = HashMap::new();
+    pub fn to_csv(&self, indices: &[usize], per_base_error_rate: f32, num_experiments: usize) -> String {
+        let p_error = per_base_error_rate as f64;
+
+        // Aggregate num_error[q] and num_correct[q] across all positions.
+        let mut num_error: HashMap<u8, u64> = HashMap::new();
+        let mut num_correct: HashMap<u8, u64> = HashMap::new();
         for &i in indices {
-            for (&key, &c) in &self.correct_pos_per_key[i] {
-                *correct_pos.entry(key).or_insert(0) += c;
+            for (&(q, _), &e) in &self.error_pos_per_key[i] {
+                *num_error.entry(q).or_insert(0) += e;
             }
-            for (&key, &e) in &self.error_pos_per_key[i] {
-                *error_pos.entry(key).or_insert(0) += e;
+            for (&(q, _), &c) in &self.correct_pos_per_key[i] {
+                *num_correct.entry(q).or_insert(0) += c;
             }
         }
 
-        let mut qscores: Vec<u8> = correct_pos.keys().chain(error_pos.keys())
-            .map(|&(q, _)| q)
-            .collect();
+        let mut qscores: Vec<u8> = num_error.keys().chain(num_correct.keys()).copied().collect();
         qscores.sort_unstable();
         qscores.dedup();
 
-        // One bootstrap loop over all experiments; estimate lambda+beta for every qscore per sample.
-        let mut boot_lambda: HashMap<u8, Vec<f32>> = qscores.iter().map(|&q| (q, Vec::with_capacity(num_experiments))).collect();
-        let mut boot_beta:   HashMap<u8, Vec<f32>> = qscores.iter().map(|&q| (q, Vec::with_capacity(num_experiments))).collect();
-        let mut boot_er:     HashMap<u8, Vec<f32>> = qscores.iter().map(|&q| (q, Vec::with_capacity(num_experiments))).collect();
+        let total_error: u64 = num_error.values().sum();
+        let total_correct: u64 = num_correct.values().sum();
 
+        let bayes_rate = |ne: u64, nc: u64, tot_e: u64, tot_c: u64| -> Option<f64> {
+            if tot_e == 0 { return Some(0.0); }
+            let p_q_given_error = ne as f64 / tot_e as f64;
+            let p_q_given_correct = if tot_c > 0 { nc as f64 / tot_c as f64 } else { 0.0 };
+            let p_q = p_q_given_error * p_error + p_q_given_correct * (1.0 - p_error);
+            if p_q < 1e-15 { return None; }
+            Some(p_q_given_error * p_error / p_q)
+        };
+
+        let mut boot_er: HashMap<u8, Vec<f32>> = qscores.iter().map(|&q| (q, Vec::with_capacity(num_experiments))).collect();
         for _ in 0..num_experiments {
             let sample = bootstrap_sample(indices);
-            let mut scp: HashMap<(u8, u8), u64> = HashMap::new();
-            let mut sep: HashMap<(u8, u8), u64> = HashMap::new();
+            let mut bne: HashMap<u8, u64> = HashMap::new();
+            let mut bnc: HashMap<u8, u64> = HashMap::new();
             for &i in &sample {
-                for (&key, &c) in &self.correct_pos_per_key[i] { *scp.entry(key).or_insert(0) += c; }
-                for (&key, &e) in &self.error_pos_per_key[i]   { *sep.entry(key).or_insert(0) += e; }
+                for (&(q, _), &e) in &self.error_pos_per_key[i]   { *bne.entry(q).or_insert(0) += e; }
+                for (&(q, _), &c) in &self.correct_pos_per_key[i] { *bnc.entry(q).or_insert(0) += c; }
             }
+            let btot_e: u64 = bne.values().sum();
+            let btot_c: u64 = bnc.values().sum();
             for &q in &qscores {
-                let boot_hr: Vec<Option<f32>> = (v_min - 1..v_max).map(|p| {
-                    let c = scp.get(&(q, p as u8)).copied().unwrap_or(0);
-                    let e = sep.get(&(q, p as u8)).copied().unwrap_or(0);
-                    let tot = c + e;
-                    if tot > 0 { Some(e as f32 / tot as f32) } else { None }
-                }).collect();
-                let (lambda, beta) = fit_lambda_beta(&boot_hr, k);
-                boot_lambda.get_mut(&q).unwrap().push(lambda);
-                boot_beta.get_mut(&q).unwrap().push(beta);
-                boot_er.get_mut(&q).unwrap().push(1.0f32 - (-(lambda as f64)).exp() as f32);
+                let ne = *bne.get(&q).unwrap_or(&0);
+                let nc = *bnc.get(&q).unwrap_or(&0);
+                if let Some(rate) = bayes_rate(ne, nc, btot_e, btot_c) {
+                    boot_er.get_mut(&q).unwrap().push(rate as f32);
+                }
             }
         }
 
-        let mut csv = String::from("qscore,lambda_median,lambda_5-95th_percentile,beta_median,beta_5-95th_percentile,per_base_error_rate_median,per_base_error_rate_5-95th_percentile,num_correct,num_error,hazard_rates\n");
+        let mut csv = String::from("qscore,per_base_error_rate_median,per_base_error_rate_5-95th_percentile,num_correct,num_error\n");
         for q in qscores {
-            let mut total_correct = 0u64;
-            let mut total_error = 0u64;
-            let mut hazard_ratios: Vec<Option<f32>> = Vec::new();
-            for p in (v_min - 1)..v_max {
-                let c = *correct_pos.get(&(q, p as u8)).unwrap_or(&0);
-                let e = *error_pos.get(&(q, p as u8)).unwrap_or(&0);
-                total_correct += c;
-                total_error += e;
-                let tot = c + e;
-                hazard_ratios.push(if tot > 0 { Some(e as f32 / tot as f32) } else { None });
-            }
-            if total_correct + total_error == 0 {
-                continue;
-            }
-
-            let hazard_rates_str: String = hazard_ratios.iter()
-                .map(|hr| hr.map_or_else(|| "NA".to_string(), |h| format!("{:.6}", h)))
-                .collect::<Vec<_>>()
-                .join("|");
-
-            let (lambda_med, lambda_lo, lambda_hi) = percentile_stats(boot_lambda.get_mut(&q).unwrap());
-            let (beta_med, beta_lo, beta_hi)       = percentile_stats(boot_beta.get_mut(&q).unwrap());
-            let (er_med, er_lo, er_hi)             = percentile_stats(boot_er.get_mut(&q).unwrap());
-
+            let ne = *num_error.get(&q).unwrap_or(&0);
+            let nc = *num_correct.get(&q).unwrap_or(&0);
+            if ne + nc == 0 { continue; }
+            let point = match bayes_rate(ne, nc, total_error, total_correct) {
+                Some(r) => r as f32,
+                None => continue,
+            };
+            let boots = boot_er.get_mut(&q).unwrap();
+            let (er_med, er_lo, er_hi) = if boots.is_empty() {
+                (point, point, point)
+            } else {
+                percentile_stats(boots)
+            };
             csv.push_str(&format!(
-                "{},{:.6},{:.6}~{:.6},{:.6},{:.6}~{:.6},{:.6},{:.6}~{:.6},{},{},{}\n",
-                q,
-                lambda_med, lambda_lo, lambda_hi,
-                beta_med, beta_lo, beta_hi,
-                er_med, er_lo, er_hi,
-                total_correct, total_error,
-                hazard_rates_str,
+                "{},{:.6},{:.6}~{:.6},{},{}\n",
+                q, er_med, er_lo, er_hi, nc, ne,
             ));
         }
         csv
@@ -535,18 +502,32 @@ impl GCContentSummary {
         self.error_pos_per_key.push(key_error_pos);
     }
 
-    pub fn to_csv(&self, indices: &[usize], v_min: usize, v_max: usize, k: usize, step: u8, num_experiments: usize) -> String {
-        // Aggregate over all indices for point estimates and totals.
-        let mut correct_pos: HashMap<(u8, u8), u64> = HashMap::new();
-        let mut error_pos: HashMap<(u8, u8), u64> = HashMap::new();
+    pub fn to_csv(&self, indices: &[usize], per_base_error_rate: f32, step: u8, num_experiments: usize) -> String {
+        let p_error = per_base_error_rate as f64;
+
+        // Aggregate num_error[gc] and num_correct[gc] across all positions.
+        let mut num_error: HashMap<u8, u64> = HashMap::new();
+        let mut num_correct: HashMap<u8, u64> = HashMap::new();
         for &i in indices {
-            for (&key, &c) in &self.correct_pos_per_key[i] {
-                *correct_pos.entry(key).or_insert(0) += c;
+            for (&(gc, _), &e) in &self.error_pos_per_key[i] {
+                *num_error.entry(gc).or_insert(0) += e;
             }
-            for (&key, &e) in &self.error_pos_per_key[i] {
-                *error_pos.entry(key).or_insert(0) += e;
+            for (&(gc, _), &c) in &self.correct_pos_per_key[i] {
+                *num_correct.entry(gc).or_insert(0) += c;
             }
         }
+
+        let total_error: u64 = num_error.values().sum();
+        let total_correct: u64 = num_correct.values().sum();
+
+        let bayes_rate = |ne: u64, nc: u64, tot_e: u64, tot_c: u64| -> Option<f64> {
+            if tot_e == 0 { return Some(0.0); }
+            let p_q_given_error = ne as f64 / tot_e as f64;
+            let p_q_given_correct = if tot_c > 0 { nc as f64 / tot_c as f64 } else { 0.0 };
+            let p_q = p_q_given_error * p_error + p_q_given_correct * (1.0 - p_error);
+            if p_q < 1e-15 { return None; }
+            Some(p_q_given_error * p_error / p_q)
+        };
 
         // Build list of GC bins.
         let mut bins: Vec<(u8, u8)> = Vec::new();
@@ -559,76 +540,44 @@ impl GCContentSummary {
         }
         let n_bins = bins.len();
 
-        // One bootstrap loop over all experiments; estimate lambda+beta for every bin per sample.
-        let mut boot_lambda: Vec<Vec<f32>> = vec![Vec::with_capacity(num_experiments); n_bins];
-        let mut boot_beta:   Vec<Vec<f32>> = vec![Vec::with_capacity(num_experiments); n_bins];
-        let mut boot_er:     Vec<Vec<f32>> = vec![Vec::with_capacity(num_experiments); n_bins];
-
+        let mut boot_er: Vec<Vec<f32>> = vec![Vec::with_capacity(num_experiments); n_bins];
         for _ in 0..num_experiments {
             let sample = bootstrap_sample(indices);
-            let mut scp: HashMap<(u8, u8), u64> = HashMap::new();
-            let mut sep: HashMap<(u8, u8), u64> = HashMap::new();
+            let mut bne: HashMap<u8, u64> = HashMap::new();
+            let mut bnc: HashMap<u8, u64> = HashMap::new();
             for &i in &sample {
-                for (&key, &c) in &self.correct_pos_per_key[i] { *scp.entry(key).or_insert(0) += c; }
-                for (&key, &e) in &self.error_pos_per_key[i]   { *sep.entry(key).or_insert(0) += e; }
+                for (&(gc, _), &e) in &self.error_pos_per_key[i]   { *bne.entry(gc).or_insert(0) += e; }
+                for (&(gc, _), &c) in &self.correct_pos_per_key[i] { *bnc.entry(gc).or_insert(0) += c; }
             }
+            let btot_e: u64 = bne.values().sum();
+            let btot_c: u64 = bnc.values().sum();
             for (bin_idx, &(gc_min, gc_max)) in bins.iter().enumerate() {
-                let boot_hr: Vec<Option<f32>> = (v_min - 1..v_max).map(|p| {
-                    let c: u64 = (gc_min..gc_max).filter_map(|gc| scp.get(&(gc, p as u8))).sum();
-                    let e: u64 = (gc_min..gc_max).filter_map(|gc| sep.get(&(gc, p as u8))).sum();
-                    let tot = c + e;
-                    if tot > 0 { Some(e as f32 / tot as f32) } else { None }
-                }).collect();
-                let (lambda, beta) = fit_lambda_beta(&boot_hr, k);
-                boot_lambda[bin_idx].push(lambda);
-                boot_beta[bin_idx].push(beta);
-                boot_er[bin_idx].push(1.0f32 - (-(lambda as f64)).exp() as f32);
+                let ne: u64 = (gc_min..gc_max).filter_map(|g| bne.get(&g)).sum();
+                let nc: u64 = (gc_min..gc_max).filter_map(|g| bnc.get(&g)).sum();
+                if let Some(rate) = bayes_rate(ne, nc, btot_e, btot_c) {
+                    boot_er[bin_idx].push(rate as f32);
+                }
             }
         }
 
-        let mut csv = String::from("gc_content_min,gc_content_max_exclusive,lambda_median,lambda_5-95th_percentile,beta_median,beta_5-95th_percentile,per_base_error_rate_median,per_base_error_rate_5-95th_percentile,num_correct,num_error,hazard_rates\n");
+        let mut csv = String::from("gc_content_min,gc_content_max_exclusive,per_base_error_rate_median,per_base_error_rate_5-95th_percentile,num_correct,num_error\n");
         for (bin_idx, (gc_min, gc_max)) in bins.into_iter().enumerate() {
-            let mut pos_correct: HashMap<u8, u64> = HashMap::new();
-            let mut pos_error:   HashMap<u8, u64> = HashMap::new();
-            for gc in gc_min..gc_max {
-                for p in (v_min - 1)..v_max {
-                    if let Some(&c) = correct_pos.get(&(gc, p as u8)) { *pos_correct.entry(p as u8).or_insert(0) += c; }
-                    if let Some(&e) = error_pos.get(&(gc, p as u8))   { *pos_error.entry(p as u8).or_insert(0) += e; }
-                }
-            }
-
-            let mut total_correct = 0u64;
-            let mut total_error = 0u64;
-            let mut hazard_ratios: Vec<Option<f32>> = Vec::new();
-            for p in (v_min - 1)..v_max {
-                let c = pos_correct.get(&(p as u8)).copied().unwrap_or(0);
-                let e = pos_error.get(&(p as u8)).copied().unwrap_or(0);
-                total_correct += c;
-                total_error += e;
-                let tot = c + e;
-                hazard_ratios.push(if tot > 0 { Some(e as f32 / tot as f32) } else { None });
-            }
-            if total_correct + total_error == 0 {
-                continue;
-            }
-
-            let hazard_rates_str: String = hazard_ratios.iter()
-                .map(|hr| hr.map_or_else(|| "NA".to_string(), |h| format!("{:.6}", h)))
-                .collect::<Vec<_>>()
-                .join("|");
-
-            let (lambda_med, lambda_lo, lambda_hi) = percentile_stats(&mut boot_lambda[bin_idx]);
-            let (beta_med, beta_lo, beta_hi)       = percentile_stats(&mut boot_beta[bin_idx]);
-            let (er_med, er_lo, er_hi)             = percentile_stats(&mut boot_er[bin_idx]);
-
+            let ne: u64 = (gc_min..gc_max).filter_map(|g| num_error.get(&g)).sum();
+            let nc: u64 = (gc_min..gc_max).filter_map(|g| num_correct.get(&g)).sum();
+            if ne + nc == 0 { continue; }
+            let point = match bayes_rate(ne, nc, total_error, total_correct) {
+                Some(r) => r as f32,
+                None => continue,
+            };
+            let boots = &mut boot_er[bin_idx];
+            let (er_med, er_lo, er_hi) = if boots.is_empty() {
+                (point, point, point)
+            } else {
+                percentile_stats(boots)
+            };
             csv.push_str(&format!(
-                "{},{},{:.6},{:.6}~{:.6},{:.6},{:.6}~{:.6},{:.6},{:.6}~{:.6},{},{},{}\n",
-                gc_min, gc_max,
-                lambda_med, lambda_lo, lambda_hi,
-                beta_med, beta_lo, beta_hi,
-                er_med, er_lo, er_hi,
-                total_correct, total_error,
-                hazard_rates_str,
+                "{},{},{:.6},{:.6}~{:.6},{},{}\n",
+                gc_min, gc_max, er_med, er_lo, er_hi, nc, ne,
             ));
         }
         csv
