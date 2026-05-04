@@ -834,15 +834,19 @@ impl ErrorAnalyzer {
             fs::write(format!("{}.summary_error_spectrum_dependence_on_t.csv", prefix), stats.error_spectrum.to_dependence_on_t_csv(Some(&indices), self.args.k as usize, self.args.ignore_smallest_t, self.args.ignore_largest_t)).unwrap();
             fs::write(format!("{}.summary_read_position.csv", prefix), stats.read_position_summary.to_csv(Some(&indices))).unwrap();
 
+            let v = stats.v as usize;
+            let v_min = 1 + self.args.ignore_smallest_t;
+            let v_max = v.saturating_sub(self.args.ignore_largest_t);
+            let k = self.args.k as usize;
             let step = self.args.gc_content_step.max(1) as u8;
 
             fs::write(
                 format!("{}.summary_phred.csv", prefix),
-                stats.phred_summary.to_csv(&indices, per_base_error_rate, self.args.num_experiments as usize),
+                stats.phred_summary.to_csv(&indices, v_min, v_max, beta, k),
             ).unwrap();
             fs::write(
                 format!("{}.summary_gc_content.csv", prefix),
-                stats.gc_content_summary.to_csv(&indices, per_base_error_rate, step, self.args.num_experiments as usize),
+                stats.gc_content_summary.to_csv(&indices, v_min, v_max, beta, k, step),
             ).unwrap();
         }
 
