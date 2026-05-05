@@ -499,7 +499,7 @@ impl ErrorAnalyzer {
      *  4. Repeat until lambda and beta change by less than 1e-4.
      */
     pub fn find_hazard_ratio_outliers(&self, stats: &KVmerStats) -> Vec<usize> {
-        let n_keys = stats.error_summary.consensus_counts.len();
+        let n_keys = stats.kvmer_summary.consensus_counts.len();
         let mut active = vec![true; n_keys];
 
         let max_iter = 10;
@@ -539,11 +539,11 @@ impl ErrorAnalyzer {
                     if !active[i] { continue; }
 
                     let n = if v == 1 {
-                        stats.error_summary.total_counts[i]
+                        stats.kvmer_summary.total_counts[i]
                     } else {
-                        stats.error_summary.consensus_up_to_v_counts[(v - 2) as usize][i]
+                        stats.kvmer_summary.consensus_up_to_v_counts[(v - 2) as usize][i]
                     };
-                    let k_obs = stats.error_summary.consensus_up_to_v_counts[(v - 1) as usize][i];
+                    let k_obs = stats.kvmer_summary.consensus_up_to_v_counts[(v - 1) as usize][i];
 
                     if n == 0 { continue; }
 
@@ -658,11 +658,11 @@ impl ErrorAnalyzer {
 
             for v in v_min..=v_max {
                 if v - 1 == 0 {
-                    x = &stats.error_summary.total_counts;
-                    y = &stats.error_summary.consensus_up_to_v_counts[0];
+                    x = &stats.kvmer_summary.total_counts;
+                    y = &stats.kvmer_summary.consensus_up_to_v_counts[0];
                 } else {
-                    x = &stats.error_summary.consensus_up_to_v_counts[(v - 1 - 1) as usize];
-                    y = &stats.error_summary.consensus_up_to_v_counts[(v - 1) as usize];
+                    x = &stats.kvmer_summary.consensus_up_to_v_counts[(v - 1 - 1) as usize];
+                    y = &stats.kvmer_summary.consensus_up_to_v_counts[(v - 1) as usize];
                 }
 
                 let xs = self.sum_indices(x, &indices_sample);
@@ -727,11 +727,11 @@ impl ErrorAnalyzer {
         let v_max = stats.v - self.args.ignore_largest_t as u8;
         for v in v_min..=v_max {
             if v - 1 == 0 {
-                x = &stats.error_summary.total_counts;
-                y = &stats.error_summary.consensus_up_to_v_counts[0];
+                x = &stats.kvmer_summary.total_counts;
+                y = &stats.kvmer_summary.consensus_up_to_v_counts[0];
             } else {
-                x = &stats.error_summary.consensus_up_to_v_counts[(v - 1 - 1) as usize];
-                y = &stats.error_summary.consensus_up_to_v_counts[(v - 1) as usize];
+                x = &stats.kvmer_summary.consensus_up_to_v_counts[(v - 1 - 1) as usize];
+                y = &stats.kvmer_summary.consensus_up_to_v_counts[(v - 1) as usize];
             }
 
             let xs = self.sum_indices(x, indices);
@@ -751,7 +751,7 @@ impl ErrorAnalyzer {
     }
 
     pub fn key_coverage(&self, stats: &KVmerStats, indices: &Vec<usize>) -> (f32, (f32, f32)) {
-        let mut coverages: Vec<u32> = indices.iter().map(|&i| stats.error_summary.total_counts[i]).collect();
+        let mut coverages: Vec<u32> = indices.iter().map(|&i| stats.kvmer_summary.total_counts[i]).collect();
         coverages.sort_unstable();
         let n = coverages.len();
         if n == 0 {
@@ -794,7 +794,7 @@ impl ErrorAnalyzer {
         let indices = if !self.args.use_all {
             self.find_hazard_ratio_outliers(stats)
         } else {
-            (0..stats.error_summary.consensus_counts.len()).collect()
+            (0..stats.kvmer_summary.consensus_counts.len()).collect()
         };
 
         // estimate SNP rates
@@ -829,7 +829,7 @@ impl ErrorAnalyzer {
                 ).expect("Could not write to hazard ratio output file.");
             }
 
-            fs::write(format!("{}.kvmer.csv", prefix), stats.error_summary.to_csv(Some(&indices))).unwrap();
+            fs::write(format!("{}.kvmer.csv", prefix), stats.kvmer_summary.to_csv(Some(&indices))).unwrap();
             fs::write(format!("{}.summary_error_spectrum.csv", prefix), stats.error_spectrum.to_csv(Some(&indices))).unwrap();
             fs::write(format!("{}.summary_error_spectrum_dependence_on_t.csv", prefix), stats.error_spectrum.to_dependence_on_t_csv(Some(&indices), self.args.k as usize, self.args.ignore_smallest_t, self.args.ignore_largest_t)).unwrap();
             fs::write(format!("{}.summary_read_position.csv", prefix), stats.read_position_summary.to_csv(Some(&indices))).unwrap();

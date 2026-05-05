@@ -11,7 +11,7 @@ use std::io::{BufWriter, BufReader};
 use std::collections::HashMap;
 
 use crate::{seeding::*, types::*};
-use crate::summary::{ErrorSummary, ErrorSpectrumSummary, GCContentSummary, PhredScoreSummary, ReadPositionSummary};
+use crate::summary::{KVmerSummary, ErrorSpectrumSummary, GCContentSummary, PhredScoreSummary, ReadPositionSummary};
 
 /// kv-mer statistics for downstream analysis.
 pub struct KVmerStats {
@@ -19,7 +19,7 @@ pub struct KVmerStats {
     pub v: u8,
     pub keys: Vec<u64>,
     pub consensus_values: Vec<u64>,
-    pub error_summary: ErrorSummary,
+    pub kvmer_summary: KVmerSummary,
     pub error_spectrum: ErrorSpectrumSummary,
     pub phred_summary: PhredScoreSummary,
     pub gc_content_summary: GCContentSummary,
@@ -239,7 +239,7 @@ impl KVmerSet {
     pub fn get_stats(&self, threshold: u32) -> KVmerStats {
         let mut keys: Vec<u64> = Vec::new();
         let mut consensus_values: Vec<u64> = Vec::new();
-        let mut error_summary = ErrorSummary::new(self.value_size as usize);
+        let mut kvmer_summary = KVmerSummary::new(self.value_size as usize);
         let mut error_spectrum = ErrorSpectrumSummary::new(self.value_size as usize);
         let mut phred_summary = PhredScoreSummary::new();
         let mut gc_content_summary = GCContentSummary::new();
@@ -264,10 +264,10 @@ impl KVmerSet {
                 continue;
             }
 
-            if error_summary.update(*key, max_value, self.key_size, self.value_size, self.bidirectional, value_map) {
+            if kvmer_summary.update(*key, max_value, self.key_size, self.value_size, self.bidirectional, value_map) {
                 keys.push(*key);
                 consensus_values.push(max_value);
-                error_spectrum.update(error_summary.error_counts_per_key.last().unwrap().clone(), error_summary.forward_error_counts_per_key.last().unwrap().clone());
+                error_spectrum.update(kvmer_summary.error_counts_per_key.last().unwrap().clone(), kvmer_summary.forward_error_counts_per_key.last().unwrap().clone());
                 phred_summary.update(max_value, self.value_size, value_map);
                 gc_content_summary.update(max_value, self.value_size, value_map);
                 read_position_summary.update(max_value, self.value_size, value_map);
@@ -279,7 +279,7 @@ impl KVmerSet {
             v: self.value_size,
             keys,
             consensus_values,
-            error_summary,
+            kvmer_summary,
             error_spectrum,
             phred_summary,
             gc_content_summary,
@@ -291,7 +291,7 @@ impl KVmerSet {
     pub fn get_stats_with_reference(&self, threshold: u32, reference: &KVmerSet) -> KVmerStats {
         let mut keys: Vec<u64> = Vec::new();
         let mut consensus_values: Vec<u64> = Vec::new();
-        let mut error_summary = ErrorSummary::new(self.value_size as usize);
+        let mut kvmer_summary = KVmerSummary::new(self.value_size as usize);
         let mut error_spectrum = ErrorSpectrumSummary::new(self.value_size as usize);
         let mut phred_summary = PhredScoreSummary::new();
         let mut gc_content_summary = GCContentSummary::new();
@@ -324,10 +324,10 @@ impl KVmerSet {
                 continue;
             }
 
-            if error_summary.update(*key, consensus_value, self.key_size, self.value_size, self.bidirectional, value_map) {
+            if kvmer_summary.update(*key, consensus_value, self.key_size, self.value_size, self.bidirectional, value_map) {
                 keys.push(*key);
                 consensus_values.push(consensus_value);
-                error_spectrum.update(error_summary.error_counts_per_key.last().unwrap().clone(), error_summary.forward_error_counts_per_key.last().unwrap().clone());
+                error_spectrum.update(kvmer_summary.error_counts_per_key.last().unwrap().clone(), kvmer_summary.forward_error_counts_per_key.last().unwrap().clone());
                 phred_summary.update(consensus_value, self.value_size, value_map);
                 gc_content_summary.update(consensus_value, self.value_size, value_map);
                 read_position_summary.update(consensus_value, self.value_size, value_map);
@@ -343,7 +343,7 @@ impl KVmerSet {
             v: self.value_size,
             keys,
             consensus_values,
-            error_summary,
+            kvmer_summary,
             error_spectrum,
             phred_summary,
             gc_content_summary,
