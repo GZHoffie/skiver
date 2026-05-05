@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::collections::HashMap;
 use crate::types::{EditOperation, ALL_OPERATIONS, SEQ_TO_BYTE, SEQ_TO_CHAR, ValueInfo, NeighborInfo};
 use crate::utils::_get_neighbors;
@@ -22,6 +23,17 @@ fn fit_lambda_given_beta(hazard_ratios: &[Option<f32>], beta: f32, k: usize) -> 
     }
     let mean_intercept = intercepts.iter().sum::<f32>() / intercepts.len() as f32;
     (mean_intercept.exp() / beta).max(0.0)
+}
+
+fn confidence_interval(values: Option<&Vec<f32>>) -> (f32, f32) {
+    let Some(values) = values else { return (0.0, 0.0); };
+    if values.is_empty() {
+        return (0.0, 0.0);
+    }
+    let mut values = values.clone();
+    values.sort_by(f32::total_cmp);
+    let n = values.len();
+    (values[(n as f32 * 0.05) as usize], values[(n as f32 * 0.95) as usize])
 }
 
 /// Per-key error-rate statistics.
@@ -329,6 +341,7 @@ pub struct PhredScoreSummary {
     pub correct_pos_per_key: Vec<HashMap<(u8, u8), u64>>,
     /// Per-key error counts indexed by (qscore, 0-based position in value).
     pub error_pos_per_key: Vec<HashMap<(u8, u8), u64>>,
+    pub bootstrap_lambdas: RefCell<HashMap<u8, Vec<f32>>>,
 }
 
 impl PhredScoreSummary {
@@ -336,6 +349,7 @@ impl PhredScoreSummary {
         PhredScoreSummary {
             correct_pos_per_key: Vec::new(),
             error_pos_per_key: Vec::new(),
+            bootstrap_lambdas: RefCell::new(HashMap::new()),
         }
     }
 
@@ -366,10 +380,20 @@ impl PhredScoreSummary {
         self.error_pos_per_key.push(key_error_pos);
     }
 
-    pub fn to_csv(&self, indices: &[usize], v_min: usize, v_max: usize, global_beta: f32, k: usize) -> String {
+    pub fn clear_bootstrap_results(&self) {
+        self.bootstrap_lambdas.borrow_mut().clear();
+    }
+
+    pub fn bootstrap_with_indices(&self, indices_sample: &[usize], estimated_lambda: f32, estimated_beta: f32, v_min: usize, v_max: usize, k: usize) {
+        for (q, lambda) in self._lambda_with_indices(indices_sample, estimated_lambda, estimated_beta, v_min, v_max, k) {
+            self.bootstrap_lambdas.borrow_mut().entry(q).or_default().push(lambda);
+        }
+    }
+
+    fn _lambda_with_indices(&self, indices_sample: &[usize], estimated_lambda: f32, estimated_beta: f32, v_min: usize, v_max: usize, k: usize) -> HashMap<u8, f32> {
         let mut correct_pos: HashMap<(u8, u8), u64> = HashMap::new();
         let mut error_pos: HashMap<(u8, u8), u64> = HashMap::new();
-        for &i in indices {
+        for &i in indices_sample {
             for (&key, &c) in &self.correct_pos_per_key[i] {
                 *correct_pos.entry(key).or_insert(0) += c;
             }
@@ -384,30 +408,51 @@ impl PhredScoreSummary {
         qscores.sort_unstable();
         qscores.dedup();
 
-        let mut csv = String::from("qscore,lambda,beta,per_base_error_rate,num_correct,num_error\n");
+        let mut lambdas = HashMap::new();
         for q in qscores {
             let mut hazard_ratios: Vec<Option<f32>> = Vec::new();
-            let mut total_correct = 0u64;
-            let mut total_error = 0u64;
             for p in (v_min - 1)..v_max {
                 let c = *correct_pos.get(&(q, p as u8)).unwrap_or(&0);
                 let e = *error_pos.get(&(q, p as u8)).unwrap_or(&0);
-                total_correct += c;
-                total_error += e;
                 let total = c + e;
                 hazard_ratios.push(if total > 0 { Some(e as f32 / total as f32) } else { None });
             }
+            let lambda = fit_lambda_given_beta(&hazard_ratios, estimated_beta, k);
+            lambdas.insert(q, if lambda.is_finite() { lambda } else { estimated_lambda });
+        }
+        lambdas
+    }
+
+    pub fn to_csv(&self, indices: &[usize], v_min: usize, v_max: usize, global_beta: f32, k: usize) -> String {
+        let lambdas = self._lambda_with_indices(indices, 0.0, global_beta, v_min, v_max, k);
+        let bootstrap_lambdas = self.bootstrap_lambdas.borrow();
+        let mut csv = String::from("qscore,empirical_qscore,per_base_error_rate,per_base_error_rate_5-95th_percentile,num_correct,num_error\n");
+        let mut qscores: Vec<u8> = lambdas.keys().copied().collect();
+        qscores.sort_unstable();
+        for q in qscores {
+            let total_correct: u64 = (v_min - 1..v_max).map(|p| self.sum_pos(indices, &(q, p as u8), true)).sum();
+            let total_error: u64 = (v_min - 1..v_max).map(|p| self.sum_pos(indices, &(q, p as u8), false)).sum();
             if total_correct + total_error == 0 {
                 continue;
             }
-            let lambda = fit_lambda_given_beta(&hazard_ratios, global_beta, k);
+            let lambda = lambdas[&q];
             let per_base_error_rate = 1.0 - (-(lambda as f64)).exp();
+            let empirical_qscore = -10.0 * per_base_error_rate.log10();
+            let ci = confidence_interval(bootstrap_lambdas.get(&q));
+            let per_base_error_rate_ci = (1.0 - (-(ci.0 as f64)).exp(), 1.0 - (-(ci.1 as f64)).exp());
             csv.push_str(&format!(
-                "{},{:.6},{:.6},{:.6},{},{}\n",
-                q, lambda, global_beta, per_base_error_rate, total_correct, total_error,
+                "{},{:.3},{:.6},{:.6}~{:.6},{},{}\n",
+                q, empirical_qscore, per_base_error_rate, per_base_error_rate_ci.0, per_base_error_rate_ci.1, total_correct, total_error,
             ));
         }
         csv
+    }
+
+    fn sum_pos(&self, indices: &[usize], key: &(u8, u8), correct: bool) -> u64 {
+        indices.iter().map(|&i| {
+            let map = if correct { &self.correct_pos_per_key[i] } else { &self.error_pos_per_key[i] };
+            map.get(key).copied().unwrap_or(0)
+        }).sum()
     }
 }
 
@@ -420,6 +465,7 @@ pub struct GCContentSummary {
     pub correct_pos_per_key: Vec<HashMap<(u8, u8), u64>>,
     /// Per-key error counts indexed by (gc_content %, 0-based position in value).
     pub error_pos_per_key: Vec<HashMap<(u8, u8), u64>>,
+    pub bootstrap_lambdas: RefCell<HashMap<(u8, u8), Vec<f32>>>,
 }
 
 impl GCContentSummary {
@@ -427,6 +473,7 @@ impl GCContentSummary {
         GCContentSummary {
             correct_pos_per_key: Vec::new(),
             error_pos_per_key: Vec::new(),
+            bootstrap_lambdas: RefCell::new(HashMap::new()),
         }
     }
 
@@ -455,10 +502,20 @@ impl GCContentSummary {
         self.error_pos_per_key.push(key_error_pos);
     }
 
-    pub fn to_csv(&self, indices: &[usize], v_min: usize, v_max: usize, global_beta: f32, k: usize, step: u8) -> String {
+    pub fn clear_bootstrap_results(&self) {
+        self.bootstrap_lambdas.borrow_mut().clear();
+    }
+
+    pub fn bootstrap_with_indices(&self, indices_sample: &[usize], estimated_lambda: f32, estimated_beta: f32, v_min: usize, v_max: usize, k: usize, step: u8) {
+        for (bin, lambda) in self._lambda_with_indices(indices_sample, estimated_lambda, estimated_beta, v_min, v_max, k, step) {
+            self.bootstrap_lambdas.borrow_mut().entry(bin).or_default().push(lambda);
+        }
+    }
+
+    fn _lambda_with_indices(&self, indices_sample: &[usize], estimated_lambda: f32, estimated_beta: f32, v_min: usize, v_max: usize, k: usize, step: u8) -> HashMap<(u8, u8), f32> {
         let mut correct_pos: HashMap<(u8, u8), u64> = HashMap::new();
         let mut error_pos: HashMap<(u8, u8), u64> = HashMap::new();
-        for &i in indices {
+        for &i in indices_sample {
             for (&key, &c) in &self.correct_pos_per_key[i] {
                 *correct_pos.entry(key).or_insert(0) += c;
             }
@@ -467,7 +524,7 @@ impl GCContentSummary {
             }
         }
 
-        let mut csv = String::from("gc_content_min,gc_content_max_exclusive,lambda,beta,per_base_error_rate,num_correct,num_error\n");
+        let mut lambdas = HashMap::new();
         let mut gc_min: u8 = 0;
         while gc_min <= 100 {
             let gc_max = gc_min.saturating_add(step).min(101);
@@ -498,18 +555,48 @@ impl GCContentSummary {
             }
 
             if total_correct + total_error > 0 {
-                let lambda = fit_lambda_given_beta(&hazard_ratios, global_beta, k);
-                let per_base_error_rate = 1.0 - (-(lambda as f64)).exp();
-                csv.push_str(&format!(
-                    "{},{},{:.6},{:.6},{:.6},{},{}\n",
-                    gc_min, gc_max, lambda, global_beta, per_base_error_rate, total_correct, total_error,
-                ));
+                let lambda = fit_lambda_given_beta(&hazard_ratios, estimated_beta, k);
+                lambdas.insert((gc_min, gc_max), if lambda.is_finite() { lambda } else { estimated_lambda });
             }
 
             if gc_max == 101 { break; }
             gc_min = gc_max;
         }
+        lambdas
+    }
+
+    pub fn to_csv(&self, indices: &[usize], v_min: usize, v_max: usize, global_beta: f32, k: usize, step: u8) -> String {
+        let lambdas = self._lambda_with_indices(indices, 0.0, global_beta, v_min, v_max, k, step);
+        let bootstrap_lambdas = self.bootstrap_lambdas.borrow();
+        let mut csv = String::from("gc_content_min,gc_content_max_exclusive,per_base_error_rate,per_base_error_rate_5-95th_percentile,beta,num_correct,num_error\n");
+        let mut bins: Vec<(u8, u8)> = lambdas.keys().copied().collect();
+        bins.sort_unstable();
+        for (gc_min, gc_max) in bins {
+            let mut total_correct = 0u64;
+            let mut total_error = 0u64;
+            for gc in gc_min..gc_max {
+                for p in (v_min - 1)..v_max {
+                    total_correct += self.sum_pos(indices, &(gc, p as u8), true);
+                    total_error += self.sum_pos(indices, &(gc, p as u8), false);
+                }
+            }
+            let lambda = lambdas[&(gc_min, gc_max)];
+            let per_base_error_rate = 1.0 - (-(lambda as f64)).exp();
+            let lambda_ci = confidence_interval(bootstrap_lambdas.get(&(gc_min, gc_max)));
+            let per_base_error_rate_ci = (1.0 - (-(lambda_ci.0 as f64)).exp(), 1.0 - (-(lambda_ci.1 as f64)).exp());
+            csv.push_str(&format!(
+                "{},{},{:.6},{:.6}~{:.6},{},{}\n",
+                gc_min, gc_max, per_base_error_rate, per_base_error_rate_ci.0, per_base_error_rate_ci.1, total_correct, total_error,
+            ));
+        }
         csv
+    }
+
+    fn sum_pos(&self, indices: &[usize], key: &(u8, u8), correct: bool) -> u64 {
+        indices.iter().map(|&i| {
+            let map = if correct { &self.correct_pos_per_key[i] } else { &self.error_pos_per_key[i] };
+            map.get(key).copied().unwrap_or(0)
+        }).sum()
     }
 }
 

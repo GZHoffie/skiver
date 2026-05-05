@@ -647,6 +647,9 @@ impl ErrorAnalyzer {
 
         let v_min = 1 + self.args.ignore_smallest_t as u8;
         let v_max = stats.v - self.args.ignore_largest_t as u8;
+        let gc_step = self.args.gc_content_step.max(1) as u8;
+        stats.phred_summary.clear_bootstrap_results();
+        stats.gc_content_summary.clear_bootstrap_results();
         for _v in v_min..=v_max {
             hazard_ratio_list.push(Vec::new());
         }
@@ -681,6 +684,8 @@ impl ErrorAnalyzer {
             lambda_list.push(lambda);
             beta_list.push(beta);
             error_rate_list.push(self.estimate_mean_hazard_rate(&hazard_ratios));
+            stats.phred_summary.bootstrap_with_indices(&indices_sample, lambda, beta, v_min as usize, v_max as usize, self.args.k as usize);
+            stats.gc_content_summary.bootstrap_with_indices(&indices_sample, lambda, beta, v_min as usize, v_max as usize, self.args.k as usize, gc_step);
         }
 
         lambda_list.sort_by(f32::total_cmp);
