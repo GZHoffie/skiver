@@ -3,10 +3,35 @@ import pandas as pd
 import numpy as np
 
 
+def _error_rate_column(df):
+    if "per_base_error_rate" in df.columns:
+        return "per_base_error_rate"
+    if "per_base_error_rate_median" in df.columns:
+        return "per_base_error_rate_median"
+    raise ValueError(
+        "Expected either 'per_base_error_rate' or "
+        "'per_base_error_rate_median' in GC content CSV."
+    )
+
+
+def _fix_shifted_gc_columns(df):
+    if (
+        "beta" in df.columns
+        and "num_correct" in df.columns
+        and "num_error" in df.columns
+        and df["num_error"].isna().all()
+    ):
+        df = df.copy()
+        df["num_error"] = df["num_correct"]
+        df["num_correct"] = df["beta"]
+    return df
+
+
 def plot_gc_content(gc_content_file, output_file, log_scale=False, min_bases=500):
     color_line = 'slategray'
 
-    df = pd.read_csv(gc_content_file)
+    df = _fix_shifted_gc_columns(pd.read_csv(gc_content_file))
+    error_rate_col = _error_rate_column(df)
 
     df = df[(df["num_correct"] + df["num_error"]) > 0].copy()
     df["num_total"] = df["num_correct"] + df["num_error"]
@@ -33,7 +58,7 @@ def plot_gc_content(gc_content_file, output_file, log_scale=False, min_bases=500
         color=color_line, alpha=0.3, label="5%–95% percentile",
     )
     ax_main.plot(
-        df_line["gc_content_mid"], df_line["per_base_error_rate_median"],
+        df_line["gc_content_mid"], df_line[error_rate_col],
         color=color_line, linewidth=3, marker='o',
         label="Empirical error rate",
     )
@@ -66,7 +91,6 @@ def plot_gc_content(gc_content_file, output_file, log_scale=False, min_bases=500
     #                label=f"min_bases = {min_bases}")
     ax_hist.set_xlabel("GC content (%)")
     ax_hist.set_ylabel("# bases")
-    ax_hist.legend(frameon=False, fontsize=8)
     ax_hist.spines['top'].set_visible(False)
     ax_hist.spines['right'].set_visible(False)
 
@@ -85,8 +109,8 @@ if __name__ == "__main__":
     parser.add_argument("output_file", help="Path to save the output plot image.")
     parser.add_argument("--log", action="store_true",
                         help="Use logarithmic scale for the y-axis (default: False).")
-    parser.add_argument("--min-bases", type=int, default=500,
-                        help="Minimum number of bases for a GC bin to appear in the line plot (default: 500).")
+    parser.add_argument("--min-bases", type=int, default=5000,
+                        help="Minimum number of bases for a GC bin to appear in the line plot (default: 5000).")
     args = parser.parse_args()
 
     plot_gc_content(args.summary_gc_content_csv, args.output_file,

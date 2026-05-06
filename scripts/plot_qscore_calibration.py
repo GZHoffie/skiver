@@ -3,11 +3,23 @@ import pandas as pd
 import numpy as np
 
 
+def _error_rate_column(df):
+    if "per_base_error_rate" in df.columns:
+        return "per_base_error_rate"
+    if "per_base_error_rate_median" in df.columns:
+        return "per_base_error_rate_median"
+    raise ValueError(
+        "Expected either 'per_base_error_rate' or "
+        "'per_base_error_rate_median' in Phred summary CSV."
+    )
+
+
 def plot_qscore_calibration(calibration_file, output_file, log_scale=False, min_coverage=100):
     color_empirical  = 'slategray'
     color_theoretical = 'indianred'
 
     df = pd.read_csv(calibration_file)
+    error_rate_col = _error_rate_column(df)
 
     # Drop rows with zero observations
     df = df[(df["num_correct"] + df["num_error"]) > 0].copy()
@@ -22,7 +34,7 @@ def plot_qscore_calibration(calibration_file, output_file, log_scale=False, min_
     df["ci_upper"] = ci[1].values
 
     q_vals   = df["qscore"].values
-    emp_rate = df["per_base_error_rate_median"].values
+    emp_rate = df[error_rate_col].values
     ci_lower = df["ci_lower"].values
     ci_upper = df["ci_upper"].values
     counts   = df["num_total"].values
@@ -88,8 +100,8 @@ if __name__ == "__main__":
     parser.add_argument("output_file", help="Path to save the output plot image.")
     parser.add_argument("--log", action="store_true",
                         help="Use logarithmic scale for the y-axis (default: False).")
-    parser.add_argument("--min-coverage", type=int, default=100,
-                        help="Minimum coverage for plotting data points (default: 100).")
+    parser.add_argument("--min-coverage", type=int, default=5000,
+                        help="Minimum coverage for plotting data points (default: 5000).")
     args = parser.parse_args()
 
     plot_qscore_calibration(args.summary_phred_csv, args.output_file,

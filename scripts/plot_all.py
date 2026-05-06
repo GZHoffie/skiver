@@ -174,10 +174,10 @@ def main():
                         help="Maximum t for survival rate curve (default: 100).")
     parser.add_argument("--num-bases", type=int, default=100,
                         help="Number of bases from each end to plot for read position (default: 100).")
-    parser.add_argument("--min-coverage", type=int, default=100,
-                        help="Minimum coverage for qscore calibration plot (default: 100).")
-    parser.add_argument("--min-bases", type=int, default=500,
-                        help="Minimum bases for GC content line plot (default: 500).")
+    parser.add_argument("--min-coverage", type=int, default=5000,
+                        help="Minimum coverage for qscore calibration plot (default: 5000).")
+    parser.add_argument("--min-bases", type=int, default=5000,
+                        help="Minimum bases for GC content line plot (default: 5000).")
 
     args = parser.parse_args()
 

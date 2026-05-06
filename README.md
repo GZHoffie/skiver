@@ -194,6 +194,8 @@ Apart from `plot_all.py`, you can also use the individual scripts and adjust the
 
 This is my first project in rust and this project is in early stages of development. All contributions, suggestions, and feature requests are welcomed!
 
+I document some key design choices as well as known limitations of skiver in [this documentation](./docs/design_choices.md) for future reference and directions for improvement.
+
 ## Citation
 
 Gu, Z., Sharma, P., Wong, L., & Nagarajan, N. (2026). [Skiver: Alignment-free Estimation of Sequencing Error Rates and Spectra using (*k*, *v*)-mer Sketches](https://www.biorxiv.org/content/10.64898/2026.02.12.705514v1). *bioRxiv*, 2026-02.
