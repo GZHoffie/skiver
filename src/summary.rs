@@ -568,7 +568,7 @@ impl GCContentSummary {
     pub fn to_csv(&self, indices: &[usize], v_min: usize, v_max: usize, global_beta: f32, k: usize, step: u8) -> String {
         let lambdas = self._lambda_with_indices(indices, 0.0, global_beta, v_min, v_max, k, step);
         let bootstrap_lambdas = self.bootstrap_lambdas.borrow();
-        let mut csv = String::from("gc_content_min,gc_content_max_exclusive,per_base_error_rate,per_base_error_rate_5-95th_percentile,beta,num_correct,num_error\n");
+        let mut csv = String::from("gc_content_min,gc_content_max_exclusive,per_base_error_rate,per_base_error_rate_5-95th_percentile,num_correct,num_error\n");
         let mut bins: Vec<(u8, u8)> = lambdas.keys().copied().collect();
         bins.sort_unstable();
         for (gc_min, gc_max) in bins {

@@ -109,7 +109,7 @@ pub struct AnalyzeArgs {
     #[clap(long, default_value_t = String::from("weibull"), help_heading = "ALGORITHM", help = "Model used to fit the hazard rates vs. t. Should be one of 'constant' (assuming that the hazard rate is constant over t), 'weibull' (assuming T follows a discrete Weibull distribution).")]
     pub hazard_model: String,
 
-    #[clap(long, default_value_t = 1, help_heading = "OUTPUT", help = "Width (in %) of each GC content bin in the GC content summary. Default 1 gives one bin per integer GC% value.")]
+    #[clap(long, default_value_t = 5, help_heading = "OUTPUT", help = "Width (in %) of each GC content bin in the GC content summary.")]
     pub gc_content_step: u8,
 
 }
