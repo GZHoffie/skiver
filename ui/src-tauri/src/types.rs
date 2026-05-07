@@ -14,7 +14,7 @@ pub struct SketchParams {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct AnalyzeParams {
-    pub kvmer_path: String,
+    pub input_files: Vec<String>,
     pub output_prefix: String,
     pub k: u8,
     pub v: u8,

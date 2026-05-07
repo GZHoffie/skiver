@@ -12,7 +12,7 @@ export interface SketchParams {
 }
 
 export interface AnalyzeParams {
-  kvmer_path: string;
+  input_files: string[];
   output_prefix: string;
   k: number;
   v: number;

@@ -29,7 +29,7 @@ const DEFAULT_SKETCH: SketchParams = {
 };
 
 const DEFAULT_ANALYZE: AnalyzeParams = {
-  kvmer_path: "",
+  input_files: [],
   output_prefix: "",
   k: 17,
   v: 17,
@@ -91,7 +91,7 @@ export default function App() {
     };
     const ap: AnalyzeParams = {
       ...analyzeParams,
-      kvmer_path: kvmerPath,
+      input_files: [kvmerPath],
       output_prefix: fullPrefix,
     };
 

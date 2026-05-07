@@ -6,7 +6,11 @@ use crate::types::{AnalyzeParams, LogEvent};
 
 #[tauri::command]
 pub async fn run_analyze(app: tauri::AppHandle, params: AnalyzeParams) -> Result<(), String> {
-    let mut args: Vec<String> = vec!["analyze".into(), params.kvmer_path.clone()];
+    let mut args: Vec<String> = vec!["analyze".into()];
+
+    for f in &params.input_files {
+        args.push(f.clone());
+    }
 
     args.extend(["-k".into(), params.k.to_string()]);
     args.extend(["-v".into(), params.v.to_string()]);
