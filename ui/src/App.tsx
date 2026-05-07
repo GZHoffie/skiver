@@ -11,6 +11,7 @@ import { ErrorSpectrumHeatmap } from "./components/plots/ErrorSpectrumHeatmap";
 import { SBS96Plot } from "./components/plots/SBS96Plot";
 import { SpectrumDependenceOnT } from "./components/plots/SpectrumDependenceOnT";
 import { QScoreCalibration } from "./components/plots/QScoreCalibration";
+import { GCContentPlot } from "./components/plots/GCContentPlot";
 import { ReadPositionPlot } from "./components/plots/ReadPositionPlot";
 import { CoverageHistogram } from "./components/plots/CoverageHistogram";
 import { SummaryBoxes } from "./components/SummaryBoxes";
@@ -19,8 +20,8 @@ import "./App.css";
 const DEFAULT_SKETCH: SketchParams = {
   input_files: [],
   output_path: "",
-  k: 19,
-  v: 19,
+  k: 17,
+  v: 17,
   c: null,
   trim_front: 0,
   trim_back: 0,
@@ -30,12 +31,12 @@ const DEFAULT_SKETCH: SketchParams = {
 const DEFAULT_ANALYZE: AnalyzeParams = {
   kvmer_path: "",
   output_prefix: "",
-  k: 19,
-  v: 19,
+  k: 17,
+  v: 17,
   lower_bound: null,
   forward_only: false,
   use_all: false,
-  outlier_threshold: 1e-9,
+  outlier_threshold: 1e-12,
   ignore_largest_t: 2,
   ignore_smallest_t: 2,
   hazard_model: "weibull",
@@ -51,6 +52,7 @@ const PLOT_TABS = [
   "SBS96",
   "Spectrum vs t",
   "Q-Score",
+  "GC Content",
   "Read Position",
   "Coverage",
 ] as const;
@@ -217,6 +219,9 @@ export default function App() {
             )}
             {plotTab === "Q-Score" && (
               <QScoreCalibration phredPath={csvPaths.summaryPhred} />
+            )}
+            {plotTab === "GC Content" && (
+              <GCContentPlot gcContentPath={csvPaths.summaryGcContent} />
             )}
             {plotTab === "Read Position" && (
               <ReadPositionPlot readPositionPath={csvPaths.summaryReadPosition} />

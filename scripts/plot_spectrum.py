@@ -97,6 +97,10 @@ def plot_spectrum(skiver_spectrum_file, skiver_error_rate_file, output_file, nor
     df = pd.read_csv(skiver_spectrum_file)
 
     if not normalize:
+        if skiver_error_rate_file is None:
+            raise ValueError(
+                "summary_error_rate_csv is required unless --normalize is set."
+            )
         rate_df = pd.read_csv(skiver_error_rate_file)
         # [FIXME] use mean_hazard_rate instead? Which one is more appropriate?
         target_sum = rate_df["per_base_error_rate"].item()
@@ -120,12 +124,21 @@ if __name__ == "__main__":
     )
     parser.add_argument("summary_error_spectrum_csv",
                         help="Path to the summary_error_spectrum CSV file.")
-    parser.add_argument("summary_error_rate_csv",
-                        help="Path to the summary_error_rate CSV file.")
-    parser.add_argument("output_file", help="Path to save the output plot image.")
+    parser.add_argument("summary_error_rate_csv", nargs="?",
+                        help="Path to the summary_error_rate CSV file. Optional when --normalize is set.")
+    parser.add_argument("output_file", nargs="?",
+                        help="Path to save the output plot image.")
     parser.add_argument("--normalize", action="store_true",
                         help="Scale entries so they sum to 1. If not set, the entries are scaled to sum to the per_base_error_rate from the summary_error_rate file.")
     args = parser.parse_args()
 
-    plot_spectrum(args.summary_error_spectrum_csv, args.summary_error_rate_csv,
-                  args.output_file, normalize=args.normalize)
+    summary_error_rate_csv = args.summary_error_rate_csv
+    output_file = args.output_file
+    if args.normalize and output_file is None:
+        output_file = summary_error_rate_csv
+        summary_error_rate_csv = None
+    if output_file is None:
+        parser.error("output_file is required.")
+
+    plot_spectrum(args.summary_error_spectrum_csv, summary_error_rate_csv,
+                  output_file, normalize=args.normalize)

@@ -1,4 +1,4 @@
-gc_content_min,gc_content_max_exclusive,per_base_error_rate,per_base_error_rate_5-95th_percentile,beta,num_correct,num_error
+gc_content_min,gc_content_max_exclusive,per_base_error_rate,per_base_error_rate_5-95th_percentile,num_correct,num_error
 5,10,0.011201,0.002077~0.011995,76,20
 10,15,0.052473,0.007021~0.050356,165,46
 15,20,0.037265,0.015158~0.044054,537,102
