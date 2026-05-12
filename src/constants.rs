@@ -1,2 +1,2 @@
-//pub const MIN_KAPPA: f32 = 20.;
-pub const EPSILON: f32 = 1e-4;
+/// A small number used in clog-log regression to avoid log(0).
+pub const EPSILON: f32 = 1e-6;

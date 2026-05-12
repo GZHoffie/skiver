@@ -11,6 +11,7 @@ After running `skiver analyze`, it produces 6 files with the specified prefix,
 |`[prefix].summary_error_spectrum_dependence_on_t.csv`|Dependence of the frequency of each error type on *t*|
 |`[prefix].summary_phred.csv`|Empirical error rate of the Phred scores|
 |`[prefix].summary_read_position.csv`|Empirical error rate of each position in the read|
+|`[prefix].summary_gc_content.csv`|Empirical error rate of the reads with a certain GC-content|
 
 Below, we explain the fields reported in each csv file.
 
@@ -87,13 +88,27 @@ Each value is paired with a `5-95th_percentile` confidence interval, which is es
 |------|--------------|
 |`qscore`|The reported Phred score in the fastq file|
 |`empirical_qscore`|The observed error rate of the base that has the Phred score.</br> **Note**: the error here includes substitution, insertion, and deletion. As long as the base differs from the consensus value, it is regarded as an error.|
-|`num_correct`|Number of bases that has the reported phred score that are correct (agree with the consensus).|
-|`num_error`|Number of bases that has the reported phred score that are incorrect (disagree with the consensus).|
-|`error_rate`|Percentage of bases that has the reported phred score that are incorrect (disagree with the consensus).|
+|`per_base_error_rate`|The per base error rate that is estimated using the clog-log regression.|
+|`per_base_error_rate_5-95th_percentile`|The confidence interval of per-base error rate estimated using bootstrapping.|
+|`num_correct`|Number of bases in the values that has the reported phred score that are correct (agree with the consensus).|
+|`num_error`|Number of bases in the values that has the reported phred score that are incorrect (disagree with the consensus).|
+
+### `[prefix].summary_gc_content.csv`
+
+[Here](./example/SRR7498042.summary_gc_content.csv) is an example of the Phred score summary file.
+
+|Fields|Interpretation|
+|------|--------------|
+|`gc_content_min`, `gc_content_max_exclusive`|Represent a range of reads whose GC-content is >= `gc_content_min` and < `gc_content_max_exclusive`|
+
+The other fields have the identical meaning as that of `summary_phred.csv`.
 
 ### `[prefix].summary_read_position.csv`
 
 [Here](./example/SRR7498042.read_position.csv) is an example of the error rate dependence on position in the read.
+
+> [!NOTE]  
+> The error rate is calculated by `num_error / (num_correct + num_error)`, instead of the clog-log regression used for Phred score and GC-content. This is because for long reads, it is hard to have enough bases in the sketch to obtain accurate estimate of hazard rates for each position in the read for each *t*. The error rate is usually lower than the per-base error rate, but the general trend would be similar.
 
 |Fields|Interpretation|
 |------|--------------|

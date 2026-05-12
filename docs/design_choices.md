@@ -22,7 +22,7 @@ One key observation is that the probability of an error happening in the value i
 
 We assume that $T$, the time until first occurrence of sequencing error, follows a discrete Weibull distribution. To find its parameters, we apply complementary log-log transform to the estimated hazard rate and perform a linear regression.
 
-One problem with this is that **it doesn't work with simulated perfect reads**, as the clog-log transformation of a zero hazard rate goes to -infinity, making the regression impossible. As of now, I set a lower limit to clip the hazard rate ($10^{-4}$) to keep the regression stable even for perfect reads. As a result, for simulated perfect reads, skiver will report an error rate of $10^{-4}$.
+One problem with this is that **it doesn't work with simulated perfect reads**, as the clog-log transformation of a zero hazard rate goes to -infinity, making the regression impossible. As of now, I set a lower limit to clip the hazard rate ($10^{-6}$) to keep the regression stable even for perfect reads. As a result, for simulated perfect reads, skiver will report an error rate of $10^{-6}$.
 
 Another problem is that we can only observe hazard rate $h(t)$ for large $t$, $k+1\leq t\leq k+v$. As a result, to estimate $h(0)$, the per-base error rate, we need to extrapolate the observed $h(t)$. This is usually unstable, and the resulting $h(0)$ can vary a lot with different parameter choices. Fortunately, the resulting hazard rate/survival rate estimation remains relatively robust in my current experiments.
 
