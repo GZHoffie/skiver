@@ -120,13 +120,7 @@ Apart from `plot_all.py`, you can also use the individual scripts and adjust the
   python scripts/plot_spectrum.py example/SRR7498042.summary_error_spectrum.csv figures/SRR7498042_spectrum.png --normalize
   ```
 
-  will plot the normalized error spectrum in `figures/SRR7498042_spectrum.png`. Without `--normalize`, pass the summary error-rate CSV before the output path so the spectrum can be scaled to the estimated per-base error rate:
-
-  ```bash
-  python scripts/plot_spectrum.py example/SRR7498042.summary_error_spectrum.csv example/SRR7498042.summary_error_rate.csv figures/SRR7498042_spectrum.png
-  ```
-
-  The output image looks like this.
+  will plot the error spectrum in `figures/spectrum.png`. If `--normalize` is set, the error spectrum is normalized such that the frequencies sum to 1. Otherwise, they sum up to the estimated per-base error rate. The output image looks like this.
 
   
   <p align="center">
@@ -147,10 +141,10 @@ Apart from `plot_all.py`, you can also use the individual scripts and adjust the
     <img src="./figures/SRR7498042_sbs96_spectrum.png"/>
   </p>
 
-- **Visualizing error spectrum dependence on t**
+- **Visualizing single base substitution (SBS) spectrum**
 
   ```bash
-  python scripts/plot_error_spectrum_dependence_on_t.py example/SRR7498042.summary_error_spectrum_dependence_on_t.csv figures/SRR7498042_error_spectrum_dep_t.png
+  python scripts/plot_error_spectrum_dependence_on_t.py example/SRR7498042.summary_error_spectrum_dependence_on_v.csv figures/SRR7498042_error_spectrum_dep_t.png
   ```
 
   will plot how the composition of error rate change with *t*. If our assumption is valid, the composition should not vary too much across *t*.
@@ -159,7 +153,7 @@ Apart from `plot_all.py`, you can also use the individual scripts and adjust the
     <img src="./figures/SRR7498042_error_spectrum_dep_t.png"/>
   </p>
 
-- **Visualizing coverage** (beta)
+- **Visualizing coverage**
 
   ```bash
   python scripts/plot_coverage.py example/SRR7498042.kvmer.csv example/SRR7498042.summary_error_rate.csv figures/SRR7498042_coverage.png
@@ -171,7 +165,7 @@ Apart from `plot_all.py`, you can also use the individual scripts and adjust the
     <img src="./figures/SRR7498042_coverage.png"/>
   </p> 
 
-- **Quality score calibration** (beta)
+- **Quality score calibration**
 
   ```bash
   python ./scripts/plot_qscore_calibration.py example/SRR7498042.summary_phred.csv figures/SRR7498042_qscore_calibration.png
@@ -183,7 +177,7 @@ Apart from `plot_all.py`, you can also use the individual scripts and adjust the
     <img src="./figures/SRR7498042_qscore_calibration.png"/>
   </p> 
 
-- **Dependence of error rate on position in the read** (beta)
+- **Dependence of error rate on position in the read**
 
   ```bash
   python ./scripts/plot_read_position.py example/SRR7498042.summary_read_position.csv figures/SRR7498042_read_position.png
@@ -195,12 +189,24 @@ Apart from `plot_all.py`, you can also use the individual scripts and adjust the
     <img src="./figures/SRR7498042_read_position.png"/>
   </p> 
 
+- **Dependence of error rate on GC-content of the read**
+
+  ```bash
+  python ./scripts/plot_gc_content.py example/SRR7498042.summary_gc_content.csv figures/SRR7498042_gc_content.png
+  ```
+
+  will plot the empirical error rate observed in sketched (*k*, *v*)-mers with respect to the GC-content of the read where they come from.
+
+   <p align="center">
+    <img src="./figures/SRR7498042_gc_content.png"/>
+  </p> 
+  
 
 ## Contribution
 
 This is my first project in rust and this project is in early stages of development. All contributions, suggestions, and feature requests are welcomed!
 
-I document some key design choices as well as known limitations of skiver in [this documentation](./docs/design_choices.md) for future reference and directions for improvement.
+I document some key design choices as well as known limitations of skiver in [this documentation](./docs/design_choices.md) for future reference and directions for improvements.
 
 ## Citation
 
