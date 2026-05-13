@@ -4,6 +4,32 @@ import numpy as np
 from scipy.ndimage import uniform_filter1d
 
 
+def _wilson_interval(num_error, num_total, z=1.6448536269514722):
+    """Return a two-sided 90% Wilson interval, matching 5th-95th bands."""
+    n = np.asarray(num_total, dtype=float)
+    valid = n > 0
+    n_safe = np.where(valid, n, 1.0)
+    p = np.divide(
+        np.asarray(num_error, dtype=float),
+        n,
+        out=np.zeros_like(n, dtype=float),
+        where=valid,
+    )
+    z2 = z ** 2
+    denom = 1 + z2 / n_safe
+    center = (p + z2 / (2 * n_safe)) / denom
+    half_width = (
+        z
+        * np.sqrt((p * (1 - p) / n_safe) + (z2 / (4 * n_safe ** 2)))
+        / denom
+    )
+    lower = np.clip(center - half_width, 0, 1)
+    upper = np.clip(center + half_width, 0, 1)
+    lower[~valid] = 0
+    upper[~valid] = 0
+    return lower, upper
+
+
 def plot_read_position(read_position_file, output_file, num_bases=100):
     color = 'slategray'
     color_smooth = 'indianred'
@@ -19,16 +45,27 @@ def plot_read_position(read_position_file, output_file, num_bases=100):
 
     fig, axes = plt.subplots(2, 2, figsize=(12, 8),
                              gridspec_kw={"height_ratios": [3, 1]})
-    
-    max_y = max(df_start["error_rate"].max(), df_end["error_rate"].max()) * 1.1
 
-    for col, (df_pos, label) in enumerate([(df_start, "from start"), (df_end, "from end")]):
+    ci_start = _wilson_interval(df_start["num_error"], df_start["num_total"])
+    ci_end = _wilson_interval(df_end["num_error"], df_end["num_total"])
+    max_y = max(ci_start[1].max(), ci_end[1].max()) * 1.1
+
+    for col, (df_pos, label, ci) in enumerate([
+        (df_start, "from start", ci_start),
+        (df_end, "from end", ci_end),
+    ]):
         ax_line = axes[0][col]
         ax_bar = axes[1][col]
 
         x = df_pos["index"].values
         y = df_pos["error_rate"].values
         counts = df_pos["num_total"].values
+        ci_lower, ci_upper = ci
+
+        ax_line.fill_between(
+            x, ci_lower, ci_upper,
+            color=color, alpha=0.25, label="5%-95% Wilson interval",
+        )
 
         # Raw error rate line
         ax_line.plot(x, y, color=color, linewidth=1.5, alpha=0.6, label="Error rate")

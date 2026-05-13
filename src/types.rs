@@ -41,6 +41,9 @@ pub struct ValueInfo {
     pub dist_to_read_end: u32,
     /// `true` if the k,v-mer came from the forward strand, `false` for RC.
     pub is_forward: bool,
+    /// GC content of the (trimmed) read this k,v-mer came from, rounded to nearest integer (%).
+    /// 0 when the source had no quality data (FASTA).
+    pub gc_content: u8,
 }
 
 /**

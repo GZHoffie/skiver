@@ -12,7 +12,7 @@ export interface SketchParams {
 }
 
 export interface AnalyzeParams {
-  kvmer_path: string;
+  input_files: string[];
   output_prefix: string;
   k: number;
   v: number;
@@ -40,6 +40,7 @@ export interface CsvPaths {
   summaryErrorSpectrum: string;
   summaryErrorSpectrumDepT: string;
   summaryPhred: string;
+  summaryGcContent: string;
   summaryReadPosition: string;
 }
 

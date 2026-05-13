@@ -1,11 +1,45 @@
+use std::cell::RefCell;
 use std::collections::HashMap;
 use crate::types::{EditOperation, ALL_OPERATIONS, SEQ_TO_BYTE, SEQ_TO_CHAR, ValueInfo, NeighborInfo};
 use crate::utils::_get_neighbors;
+use crate::constants::EPSILON;
+
+/// Estimate lambda from hazard ratios with beta held fixed.
+/// Uses the cloglog linearisation: log(-log(1-h(t))) ≈ (beta-1)*log(t) + log(lambda*beta).
+/// Positions where the denominator was zero (None) are skipped.
+fn fit_lambda_given_beta(hazard_ratios: &[Option<f32>], beta: f32, k: usize) -> f32 {
+    if beta <= 0.0 {
+        return 0.0;
+    }
+    let intercepts: Vec<f32> = hazard_ratios.iter().enumerate()
+        .filter_map(|(i, &hr)| hr.map(|h| {
+            let y = (-(-(h.clamp(EPSILON, 1.0 - EPSILON))).ln_1p()).ln();
+            let x = (i as f32 + k as f32).ln();
+            y - (beta - 1.0) * x
+        }))
+        .collect();
+    if intercepts.is_empty() {
+        return 0.0;
+    }
+    let mean_intercept = intercepts.iter().sum::<f32>() / intercepts.len() as f32;
+    (mean_intercept.exp() / beta).max(0.0)
+}
+
+fn confidence_interval(values: Option<&Vec<f32>>) -> (f32, f32) {
+    let Some(values) = values else { return (0.0, 0.0); };
+    if values.is_empty() {
+        return (0.0, 0.0);
+    }
+    let mut values = values.clone();
+    values.sort_by(f32::total_cmp);
+    let n = values.len();
+    (values[(n as f32 * 0.05) as usize], values[(n as f32 * 0.95) as usize])
+}
 
 /// Per-key error-rate statistics.
 /// Corresponds to `KVmerStats` fields: `consensus_counts`, `total_counts`,
 /// `neighbor_counts`, `consensus_up_to_v_counts`.
-pub struct ErrorSummary {
+pub struct KVmerSummary {
     pub consensus_counts: Vec<u32>,
     pub total_counts: Vec<u32>,
     pub neighbor_counts: Vec<u32>,
@@ -13,25 +47,21 @@ pub struct ErrorSummary {
     pub consensus_up_to_v_counts: Vec<Vec<u32>>,
     pub key_strings: Vec<String>,
     pub value_strings: Vec<String>,
-    pub second_value_strings: Vec<String>,
-    pub second_counts: Vec<u32>,
     pub homopolymer_lengths: Vec<u32>,
     pub error_counts_per_key: Vec<HashMap<NeighborInfo, u32>>,
     pub forward_error_counts_per_key: Vec<HashMap<NeighborInfo, u32>>,
     v: usize,
 }
 
-impl ErrorSummary {
+impl KVmerSummary {
     pub fn new(v: usize) -> Self {
-        ErrorSummary {
+        KVmerSummary {
             consensus_counts: Vec::new(),
             total_counts: Vec::new(),
             neighbor_counts: Vec::new(),
             consensus_up_to_v_counts: vec![Vec::new(); v],
             key_strings: Vec::new(),
             value_strings: Vec::new(),
-            second_value_strings: Vec::new(),
-            second_counts: Vec::new(),
             homopolymer_lengths: Vec::new(),
             error_counts_per_key: Vec::new(),
             forward_error_counts_per_key: Vec::new(),
@@ -119,15 +149,6 @@ impl ErrorSummary {
             }
         }
 
-        // find second most common value (highest-count non-consensus value)
-        let second = value_map.iter()
-            .filter(|&(&v, _)| v != consensus)
-            .max_by_key(|(_, info_list)| info_list.len());
-        let (second_value_string, second_count) = match second {
-            Some((&v, info_list)) => (Self::to_kmer_string(v, value_size), info_list.len() as u32),
-            None => (String::new(), 0),
-        };
-
         // store
         self.consensus_counts.push(consensus_count);
         self.total_counts.push(sum_count);
@@ -139,8 +160,6 @@ impl ErrorSummary {
         }
         self.key_strings.push(key_string);
         self.value_strings.push(value_string);
-        self.second_value_strings.push(second_value_string);
-        self.second_counts.push(second_count);
         self.homopolymer_lengths.push(homopolymer_length);
         self.error_counts_per_key.push(error_count_map);
         self.forward_error_counts_per_key.push(forward_error_count_map);
@@ -149,7 +168,7 @@ impl ErrorSummary {
     }
 }
 
-impl ErrorSummary {
+impl KVmerSummary {
     pub fn to_csv(&self, indices: Option<&[usize]>) -> String {
         use std::fmt::Write;
         use std::collections::HashSet;
@@ -314,54 +333,270 @@ impl ErrorSpectrumSummary {
 }
 
 /// Phred quality-score calibration statistics.
-/// Corresponds to `KVmerStats` fields: `qscore_correct`, `qscore_error`,
-/// `qscore_correct_per_key`, `qscore_error_per_key`.
+/// Stores per-key correct/error counts indexed by (qscore, 0-based position in value).
+/// The sequential scan stops at the first mismatch, so position p is only recorded
+/// when all positions 0..p-1 matched consensus — implementing the hazard model.
 pub struct PhredScoreSummary {
-    pub correct: HashMap<u8, u64>,
-    pub error: HashMap<u8, u64>,
-    pub correct_per_key: Vec<HashMap<u8, u64>>,
-    pub error_per_key: Vec<HashMap<u8, u64>>,
+    /// Per-key correct counts indexed by (qscore, 0-based position in value).
+    pub correct_pos_per_key: Vec<HashMap<(u8, u8), u64>>,
+    /// Per-key error counts indexed by (qscore, 0-based position in value).
+    pub error_pos_per_key: Vec<HashMap<(u8, u8), u64>>,
+    pub bootstrap_lambdas: RefCell<HashMap<u8, Vec<f32>>>,
 }
 
 impl PhredScoreSummary {
     pub fn new() -> Self {
         PhredScoreSummary {
-            correct: HashMap::new(),
-            error: HashMap::new(),
-            correct_per_key: Vec::new(),
-            error_per_key: Vec::new(),
+            correct_pos_per_key: Vec::new(),
+            error_pos_per_key: Vec::new(),
+            bootstrap_lambdas: RefCell::new(HashMap::new()),
         }
     }
 
-    /// Accumulate one key's Phred calibration data.
-    /// If `first_base_only` is true, only the first base of each value is considered.
-    pub fn update(&mut self, consensus: u64, value_size: u8, value_map: &HashMap<u64, Vec<ValueInfo>>, first_base_only: bool) {
-        let mut key_correct: HashMap<u8, u64> = HashMap::new();
-        let mut key_error: HashMap<u8, u64> = HashMap::new();
+    /// Accumulate one key's Phred calibration data across all value positions.
+    pub fn update(&mut self, consensus: u64, value_size: u8, value_map: &HashMap<u64, Vec<ValueInfo>>) {
+        let mut key_correct_pos: HashMap<(u8, u8), u64> = HashMap::new();
+        let mut key_error_pos: HashMap<(u8, u8), u64> = HashMap::new();
         for (value, info_list) in value_map {
             for info in info_list {
                 if info.qual.is_empty() {
                     continue;
                 }
-                let range = if first_base_only { 0..1 } else { 0..value_size as usize };
-                for p in range {
+                for p in 0..value_size as usize {
                     let bit_shift = 2 * (value_size as usize - 1 - p);
                     let value_base     = (value     >> bit_shift) & 0b11;
                     let consensus_base = (consensus >> bit_shift) & 0b11;
                     let phred = info.qual[p].saturating_sub(33);
                     if value_base == consensus_base {
-                        *key_correct.entry(phred).or_insert(0) += 1;
+                        *key_correct_pos.entry((phred, p as u8)).or_insert(0) += 1;
                     } else {
-                        *key_error.entry(phred).or_insert(0) += 1;
+                        *key_error_pos.entry((phred, p as u8)).or_insert(0) += 1;
                         break;
                     }
                 }
             }
         }
-        for (&q, &c) in &key_correct { *self.correct.entry(q).or_insert(0) += c; }
-        for (&q, &e) in &key_error   { *self.error.entry(q).or_insert(0)   += e; }
-        self.correct_per_key.push(key_correct);
-        self.error_per_key.push(key_error);
+        self.correct_pos_per_key.push(key_correct_pos);
+        self.error_pos_per_key.push(key_error_pos);
+    }
+
+    pub fn clear_bootstrap_results(&self) {
+        self.bootstrap_lambdas.borrow_mut().clear();
+    }
+
+    pub fn bootstrap_with_indices(&self, indices_sample: &[usize], estimated_lambda: f32, estimated_beta: f32, v_min: usize, v_max: usize, k: usize) {
+        for (q, lambda) in self._lambda_with_indices(indices_sample, estimated_lambda, estimated_beta, v_min, v_max, k) {
+            self.bootstrap_lambdas.borrow_mut().entry(q).or_default().push(lambda);
+        }
+    }
+
+    fn _lambda_with_indices(&self, indices_sample: &[usize], estimated_lambda: f32, estimated_beta: f32, v_min: usize, v_max: usize, k: usize) -> HashMap<u8, f32> {
+        let mut correct_pos: HashMap<(u8, u8), u64> = HashMap::new();
+        let mut error_pos: HashMap<(u8, u8), u64> = HashMap::new();
+        for &i in indices_sample {
+            for (&key, &c) in &self.correct_pos_per_key[i] {
+                *correct_pos.entry(key).or_insert(0) += c;
+            }
+            for (&key, &e) in &self.error_pos_per_key[i] {
+                *error_pos.entry(key).or_insert(0) += e;
+            }
+        }
+
+        let mut qscores: Vec<u8> = correct_pos.keys().chain(error_pos.keys())
+            .map(|&(q, _)| q)
+            .collect();
+        qscores.sort_unstable();
+        qscores.dedup();
+
+        let mut lambdas = HashMap::new();
+        for q in qscores {
+            let mut hazard_ratios: Vec<Option<f32>> = Vec::new();
+            for p in (v_min - 1)..v_max {
+                let c = *correct_pos.get(&(q, p as u8)).unwrap_or(&0);
+                let e = *error_pos.get(&(q, p as u8)).unwrap_or(&0);
+                let total = c + e;
+                hazard_ratios.push(if total > 0 { Some(e as f32 / total as f32) } else { None });
+            }
+            let lambda = fit_lambda_given_beta(&hazard_ratios, estimated_beta, k);
+            lambdas.insert(q, if lambda.is_finite() { lambda } else { estimated_lambda });
+        }
+        lambdas
+    }
+
+    pub fn to_csv(&self, indices: &[usize], v_min: usize, v_max: usize, global_beta: f32, k: usize) -> String {
+        let lambdas = self._lambda_with_indices(indices, 0.0, global_beta, v_min, v_max, k);
+        let bootstrap_lambdas = self.bootstrap_lambdas.borrow();
+        let mut csv = String::from("qscore,empirical_qscore,per_base_error_rate,per_base_error_rate_5-95th_percentile,num_correct,num_error\n");
+        let mut qscores: Vec<u8> = lambdas.keys().copied().collect();
+        qscores.sort_unstable();
+        for q in qscores {
+            let total_correct: u64 = (v_min - 1..v_max).map(|p| self.sum_pos(indices, &(q, p as u8), true)).sum();
+            let total_error: u64 = (v_min - 1..v_max).map(|p| self.sum_pos(indices, &(q, p as u8), false)).sum();
+            if total_correct + total_error == 0 {
+                continue;
+            }
+            let lambda = lambdas[&q];
+            let per_base_error_rate = 1.0 - (-(lambda as f64)).exp();
+            let empirical_qscore = -10.0 * per_base_error_rate.log10();
+            let ci = confidence_interval(bootstrap_lambdas.get(&q));
+            let per_base_error_rate_ci = (1.0 - (-(ci.0 as f64)).exp(), 1.0 - (-(ci.1 as f64)).exp());
+            csv.push_str(&format!(
+                "{},{:.3},{:.6},{:.6}~{:.6},{},{}\n",
+                q, empirical_qscore, per_base_error_rate, per_base_error_rate_ci.0, per_base_error_rate_ci.1, total_correct, total_error,
+            ));
+        }
+        csv
+    }
+
+    fn sum_pos(&self, indices: &[usize], key: &(u8, u8), correct: bool) -> u64 {
+        indices.iter().map(|&i| {
+            let map = if correct { &self.correct_pos_per_key[i] } else { &self.error_pos_per_key[i] };
+            map.get(key).copied().unwrap_or(0)
+        }).sum()
+    }
+}
+
+/// GC-content error calibration statistics.
+/// Stores per-key correct/error counts indexed by (gc_content_percent, 0-based position in value).
+/// Uses the same hazard model as PhredScoreSummary: position p is only recorded when all
+/// positions 0..p-1 matched consensus.
+pub struct GCContentSummary {
+    /// Per-key correct counts indexed by (gc_content %, 0-based position in value).
+    pub correct_pos_per_key: Vec<HashMap<(u8, u8), u64>>,
+    /// Per-key error counts indexed by (gc_content %, 0-based position in value).
+    pub error_pos_per_key: Vec<HashMap<(u8, u8), u64>>,
+    pub bootstrap_lambdas: RefCell<HashMap<(u8, u8), Vec<f32>>>,
+}
+
+impl GCContentSummary {
+    pub fn new() -> Self {
+        GCContentSummary {
+            correct_pos_per_key: Vec::new(),
+            error_pos_per_key: Vec::new(),
+            bootstrap_lambdas: RefCell::new(HashMap::new()),
+        }
+    }
+
+    pub fn update(&mut self, consensus: u64, value_size: u8, value_map: &HashMap<u64, Vec<ValueInfo>>) {
+        let mut key_correct_pos: HashMap<(u8, u8), u64> = HashMap::new();
+        let mut key_error_pos: HashMap<(u8, u8), u64> = HashMap::new();
+        for (value, info_list) in value_map {
+            for info in info_list {
+                if info.qual.is_empty() {
+                    continue;
+                }
+                for p in 0..value_size as usize {
+                    let bit_shift = 2 * (value_size as usize - 1 - p);
+                    let value_base     = (value     >> bit_shift) & 0b11;
+                    let consensus_base = (consensus >> bit_shift) & 0b11;
+                    if value_base == consensus_base {
+                        *key_correct_pos.entry((info.gc_content, p as u8)).or_insert(0) += 1;
+                    } else {
+                        *key_error_pos.entry((info.gc_content, p as u8)).or_insert(0) += 1;
+                        break;
+                    }
+                }
+            }
+        }
+        self.correct_pos_per_key.push(key_correct_pos);
+        self.error_pos_per_key.push(key_error_pos);
+    }
+
+    pub fn clear_bootstrap_results(&self) {
+        self.bootstrap_lambdas.borrow_mut().clear();
+    }
+
+    pub fn bootstrap_with_indices(&self, indices_sample: &[usize], estimated_lambda: f32, estimated_beta: f32, v_min: usize, v_max: usize, k: usize, step: u8) {
+        for (bin, lambda) in self._lambda_with_indices(indices_sample, estimated_lambda, estimated_beta, v_min, v_max, k, step) {
+            self.bootstrap_lambdas.borrow_mut().entry(bin).or_default().push(lambda);
+        }
+    }
+
+    fn _lambda_with_indices(&self, indices_sample: &[usize], estimated_lambda: f32, estimated_beta: f32, v_min: usize, v_max: usize, k: usize, step: u8) -> HashMap<(u8, u8), f32> {
+        let mut correct_pos: HashMap<(u8, u8), u64> = HashMap::new();
+        let mut error_pos: HashMap<(u8, u8), u64> = HashMap::new();
+        for &i in indices_sample {
+            for (&key, &c) in &self.correct_pos_per_key[i] {
+                *correct_pos.entry(key).or_insert(0) += c;
+            }
+            for (&key, &e) in &self.error_pos_per_key[i] {
+                *error_pos.entry(key).or_insert(0) += e;
+            }
+        }
+
+        let mut lambdas = HashMap::new();
+        let mut gc_min: u8 = 0;
+        while gc_min <= 100 {
+            let gc_max = gc_min.saturating_add(step).min(101);
+
+            let mut pos_correct: HashMap<u8, u64> = HashMap::new();
+            let mut pos_error: HashMap<u8, u64> = HashMap::new();
+            for gc in gc_min..gc_max {
+                for p in (v_min - 1)..v_max {
+                    if let Some(&c) = correct_pos.get(&(gc, p as u8)) {
+                        *pos_correct.entry(p as u8).or_insert(0) += c;
+                    }
+                    if let Some(&e) = error_pos.get(&(gc, p as u8)) {
+                        *pos_error.entry(p as u8).or_insert(0) += e;
+                    }
+                }
+            }
+
+            let mut hazard_ratios: Vec<Option<f32>> = Vec::new();
+            let mut total_correct = 0u64;
+            let mut total_error = 0u64;
+            for p in (v_min - 1)..v_max {
+                let c = pos_correct.get(&(p as u8)).copied().unwrap_or(0);
+                let e = pos_error.get(&(p as u8)).copied().unwrap_or(0);
+                total_correct += c;
+                total_error += e;
+                let tot = c + e;
+                hazard_ratios.push(if tot > 0 { Some(e as f32 / tot as f32) } else { None });
+            }
+
+            if total_correct + total_error > 0 {
+                let lambda = fit_lambda_given_beta(&hazard_ratios, estimated_beta, k);
+                lambdas.insert((gc_min, gc_max), if lambda.is_finite() { lambda } else { estimated_lambda });
+            }
+
+            if gc_max == 101 { break; }
+            gc_min = gc_max;
+        }
+        lambdas
+    }
+
+    pub fn to_csv(&self, indices: &[usize], v_min: usize, v_max: usize, global_beta: f32, k: usize, step: u8) -> String {
+        let lambdas = self._lambda_with_indices(indices, 0.0, global_beta, v_min, v_max, k, step);
+        let bootstrap_lambdas = self.bootstrap_lambdas.borrow();
+        let mut csv = String::from("gc_content_min,gc_content_max_exclusive,per_base_error_rate,per_base_error_rate_5-95th_percentile,num_correct,num_error\n");
+        let mut bins: Vec<(u8, u8)> = lambdas.keys().copied().collect();
+        bins.sort_unstable();
+        for (gc_min, gc_max) in bins {
+            let mut total_correct = 0u64;
+            let mut total_error = 0u64;
+            for gc in gc_min..gc_max {
+                for p in (v_min - 1)..v_max {
+                    total_correct += self.sum_pos(indices, &(gc, p as u8), true);
+                    total_error += self.sum_pos(indices, &(gc, p as u8), false);
+                }
+            }
+            let lambda = lambdas[&(gc_min, gc_max)];
+            let per_base_error_rate = 1.0 - (-(lambda as f64)).exp();
+            let lambda_ci = confidence_interval(bootstrap_lambdas.get(&(gc_min, gc_max)));
+            let per_base_error_rate_ci = (1.0 - (-(lambda_ci.0 as f64)).exp(), 1.0 - (-(lambda_ci.1 as f64)).exp());
+            csv.push_str(&format!(
+                "{},{},{:.6},{:.6}~{:.6},{},{}\n",
+                gc_min, gc_max, per_base_error_rate, per_base_error_rate_ci.0, per_base_error_rate_ci.1, total_correct, total_error,
+            ));
+        }
+        csv
+    }
+
+    fn sum_pos(&self, indices: &[usize], key: &(u8, u8), correct: bool) -> u64 {
+        indices.iter().map(|&i| {
+            let map = if correct { &self.correct_pos_per_key[i] } else { &self.error_pos_per_key[i] };
+            map.get(key).copied().unwrap_or(0)
+        }).sum()
     }
 }
 
@@ -385,8 +620,7 @@ impl ReadPositionSummary {
         }
     }
 
-    /// If `first_base_only` is true, only the first base of each value is considered.
-    pub fn update(&mut self, consensus: u64, value_size: u8, value_map: &HashMap<u64, Vec<ValueInfo>>, first_base_only: bool) {
+    pub fn update(&mut self, consensus: u64, value_size: u8, value_map: &HashMap<u64, Vec<ValueInfo>>) {
         let mut correct_from_start: HashMap<u32, u64> = HashMap::new();
         let mut correct_from_end: HashMap<u32, u64> = HashMap::new();
         let mut error_from_start: HashMap<u32, u64> = HashMap::new();
@@ -396,8 +630,7 @@ impl ReadPositionSummary {
                 if info.qual.is_empty() {
                     continue;
                 }
-                let range = if first_base_only { 0..1 } else { 0..value_size as usize };
-                for p in range {
+                for p in 0..value_size as usize {
                     let bit_shift = 2 * (value_size as usize - 1 - p);
                     let value_base     = (value     >> bit_shift) & 0b11;
                     let consensus_base = (consensus >> bit_shift) & 0b11;
@@ -425,6 +658,7 @@ impl ReadPositionSummary {
         self.error_from_end_per_key.push(error_from_end);
     }
 }
+
 
 impl ReadPositionSummary {
     pub fn to_csv(&self, indices: Option<&[usize]>) -> String {
@@ -469,37 +703,6 @@ impl ReadPositionSummary {
             writeln!(out, "{},false,{},{},{:.6}", pos, nc, ne, error_rate).unwrap();
         }
 
-        out
-    }
-}
-
-impl PhredScoreSummary {
-    pub fn to_csv(&self, indices: Option<&[usize]>) -> String {
-        use std::fmt::Write;
-        let all: Vec<usize>;
-        let indices = match indices {
-            Some(idx) => idx,
-            None => { all = (0..self.correct_per_key.len()).collect(); &all }
-        };
-        let mut correct: HashMap<u8, u64> = HashMap::new();
-        let mut error: HashMap<u8, u64> = HashMap::new();
-        for &i in indices {
-            for (&q, &c) in &self.correct_per_key[i] { *correct.entry(q).or_insert(0) += c; }
-            for (&q, &e) in &self.error_per_key[i]   { *error.entry(q).or_insert(0) += e; }
-        }
-        let mut scores: Vec<u8> = correct.keys().chain(error.keys()).copied().collect();
-        scores.sort();
-        scores.dedup();
-        let mut out = String::new();
-        writeln!(out, "qscore,empirical_qscore,num_correct,num_error,error_rate").unwrap();
-        for q in scores {
-            let num_correct = correct.get(&q).copied().unwrap_or(0);
-            let num_error   = error.get(&q).copied().unwrap_or(0);
-            let total = num_correct + num_error;
-            let error_rate = if total > 0 { num_error as f64 / total as f64 } else { 0.0 };
-            let empirical_q = if error_rate > 0.0 { -10.0 * error_rate.log10() } else { f64::INFINITY };
-            writeln!(out, "{},{:.4},{},{},{:.6}", q, empirical_q, num_correct, num_error, error_rate).unwrap();
-        }
         out
     }
 }

@@ -21,12 +21,24 @@ export function useSkiverRun() {
     setLogs((prev) => [...prev, entry]);
   }, []);
 
+  function hasKvmerInput(files: string[]): boolean {
+    return files.some((path) => path.toLowerCase().endsWith(".kvmer"));
+  }
+
   const run = useCallback(
     async (sketchParams: SketchParams, analyzeParams: AnalyzeParams) => {
       setLogs([]);
       setCsvPaths(null);
       setErrorMessage(null);
 
+      const analyzeInputFiles = hasKvmerInput(sketchParams.input_files)
+        ? sketchParams.input_files
+        : analyzeParams.input_files;
+      const effectiveAnalyzeParams: AnalyzeParams = {
+        ...analyzeParams,
+        input_files: analyzeInputFiles,
+      };
+      const shouldRunSketch = !hasKvmerInput(sketchParams.input_files);
       const sketchChanged =
         !lastSketchRef.current ||
         JSON.stringify(sketchParams) !== JSON.stringify(lastSketchRef.current);
@@ -39,7 +51,9 @@ export function useSkiverRun() {
 
       try {
         // --- Sketch ---
-        if (sketchChanged) {
+        if (!shouldRunSketch) {
+          appendLog({ stream: "stdout", line: "=== skiver sketch (skipped — .kvmer input provided) ===" });
+        } else if (sketchChanged) {
           setPhase("sketching");
           appendLog({ stream: "stdout", line: "=== skiver sketch ===" });
           await invoke("run_sketch", { params: sketchParams });
@@ -51,10 +65,10 @@ export function useSkiverRun() {
         // --- Analyze ---
         setPhase("analyzing");
         appendLog({ stream: "stdout", line: "=== skiver analyze ===" });
-        await invoke("run_analyze", { params: analyzeParams });
+        await invoke("run_analyze", { params: effectiveAnalyzeParams });
 
         // Build CSV paths
-        const prefix = analyzeParams.output_prefix;
+        const prefix = effectiveAnalyzeParams.output_prefix;
         const paths: CsvPaths = {
           summaryErrorRate: `${prefix}.summary_error_rate.csv`,
           kvmer: `${prefix}.kvmer.csv`,
@@ -62,6 +76,7 @@ export function useSkiverRun() {
           summaryErrorSpectrum: `${prefix}.summary_error_spectrum.csv`,
           summaryErrorSpectrumDepT: `${prefix}.summary_error_spectrum_dependence_on_t.csv`,
           summaryPhred: `${prefix}.summary_phred.csv`,
+          summaryGcContent: `${prefix}.summary_gc_content.csv`,
           summaryReadPosition: `${prefix}.summary_read_position.csv`,
         };
 

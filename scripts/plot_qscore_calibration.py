@@ -3,11 +3,23 @@ import pandas as pd
 import numpy as np
 
 
+def _error_rate_column(df):
+    if "per_base_error_rate" in df.columns:
+        return "per_base_error_rate"
+    if "per_base_error_rate_median" in df.columns:
+        return "per_base_error_rate_median"
+    raise ValueError(
+        "Expected either 'per_base_error_rate' or "
+        "'per_base_error_rate_median' in Phred summary CSV."
+    )
+
+
 def plot_qscore_calibration(calibration_file, output_file, log_scale=False, min_coverage=100):
     color_empirical  = 'slategray'
     color_theoretical = 'indianred'
 
     df = pd.read_csv(calibration_file)
+    error_rate_col = _error_rate_column(df)
 
     # Drop rows with zero observations
     df = df[(df["num_correct"] + df["num_error"]) > 0].copy()
@@ -16,10 +28,15 @@ def plot_qscore_calibration(calibration_file, output_file, log_scale=False, min_
     # Filter by minimum coverage
     df = df[df["num_total"] >= min_coverage]
 
-    q_vals = df["qscore"].values
-    emp_rate = df["error_rate"].values
-    #ci_lower = df["5th_percentile"].values
-    #ci_upper = df["95th_percentile"].values
+    # Parse 5th-95th percentile column ("lo~hi")
+    ci = df["per_base_error_rate_5-95th_percentile"].str.split("~", expand=True).astype(float)
+    df["ci_lower"] = ci[0].values
+    df["ci_upper"] = ci[1].values
+
+    q_vals   = df["qscore"].values
+    emp_rate = df[error_rate_col].values
+    ci_lower = df["ci_lower"].values
+    ci_upper = df["ci_upper"].values
     counts   = df["num_total"].values
 
     # Theoretical Phred error rate: P(error) = 10^(-Q/10)
@@ -40,12 +57,12 @@ def plot_qscore_calibration(calibration_file, output_file, log_scale=False, min_
                  linestyle='--', linewidth=3, label="Theoretical ($10^{-Q/10}$)", zorder=3)
 
     # Confidence band
-    #ax_main.fill_between(q_vals, ci_lower, ci_upper,
-    #                     color=color_empirical, alpha=0.25, label="5%–95% CI")
+    ax_main.fill_between(q_vals, ci_lower, ci_upper,
+                         color=color_empirical, alpha=0.3, label="5%–95% percentile")
 
     # Empirical line
     ax_main.plot(q_vals, emp_rate, color=color_empirical,
-                 linewidth=3, marker='o', 
+                 linewidth=3, marker='o',
                  label="Empirical error rate", zorder=4)
 
     if log_scale:
@@ -83,8 +100,8 @@ if __name__ == "__main__":
     parser.add_argument("output_file", help="Path to save the output plot image.")
     parser.add_argument("--log", action="store_true",
                         help="Use logarithmic scale for the y-axis (default: False).")
-    parser.add_argument("--min-coverage", type=int, default=100,
-                        help="Minimum coverage for plotting data points (default: 100).")
+    parser.add_argument("--min-coverage", type=int, default=5000,
+                        help="Minimum coverage for plotting data points (default: 5000).")
     args = parser.parse_args()
 
     plot_qscore_calibration(args.summary_phred_csv, args.output_file,

@@ -18,3 +18,6 @@ dist/
 src-tauri/target/
 src-tauri/gen/
 ui/src-tauri/binaries/skiver-*
+example/*.kvmer.csv
+sim*
+ERR3152366*

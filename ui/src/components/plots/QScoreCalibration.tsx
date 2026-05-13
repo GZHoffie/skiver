@@ -7,7 +7,9 @@ interface PhredRow {
   empirical_qscore: number;
   num_correct: number;
   num_error: number;
-  error_rate: number;
+  per_base_error_rate?: number;
+  per_base_error_rate_median?: number;
+  "per_base_error_rate_5-95th_percentile"?: string;
 }
 
 interface Props {
@@ -30,8 +32,15 @@ export function QScoreCalibration({ phredPath }: Props) {
     return <div className="plot-loading">No data above coverage threshold.</div>;
 
   const qVals = filtered.map((r) => r.qscore);
-  const empRate = filtered.map((r) => r.error_rate);
+  const empRate = filtered.map((r) => r.per_base_error_rate ?? r.per_base_error_rate_median ?? 0);
   const counts = filtered.map((r) => r.num_correct + r.num_error);
+  const ci = filtered.map((r) => {
+    const [lo, hi] = (r["per_base_error_rate_5-95th_percentile"] ?? "").split("~");
+    return { lo: Number(lo), hi: Number(hi) };
+  });
+  const ciLower = ci.map((v) => v.lo);
+  const ciUpper = ci.map((v) => v.hi);
+  const hasCi = ci.every((v) => Number.isFinite(v.lo) && Number.isFinite(v.hi));
 
   const maxQ = Math.max(...qVals);
   const qTheory = Array.from({ length: 300 }, (_, i) => 1 + (i * (maxQ - 1)) / 299);
@@ -48,6 +57,33 @@ export function QScoreCalibration({ phredPath }: Props) {
       xaxis: "x",
       yaxis: "y",
     },
+    ...(hasCi
+      ? [
+          {
+            type: "scatter" as const,
+            x: qVals,
+            y: ciLower,
+            mode: "lines" as const,
+            line: { color: "transparent" },
+            showlegend: false,
+            hoverinfo: "skip" as const,
+            xaxis: "x",
+            yaxis: "y",
+          },
+          {
+            type: "scatter" as const,
+            x: qVals,
+            y: ciUpper,
+            mode: "lines" as const,
+            fill: "tonexty" as const,
+            fillcolor: "rgba(112,128,144,0.25)",
+            line: { color: "transparent" },
+            name: "5-95% percentile",
+            xaxis: "x",
+            yaxis: "y",
+          },
+        ]
+      : []),
     {
       type: "scatter",
       x: qVals,

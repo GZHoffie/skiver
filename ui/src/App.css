@@ -385,6 +385,12 @@ select:focus {
   accent-color: var(--accent);
 }
 
+.field-row input.output-prefix-input {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+}
+
 .path-display {
   font-size: 0.9rem;
   color: var(--text-muted);

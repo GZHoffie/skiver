@@ -124,15 +124,15 @@ pub fn is_sketch_file(file_path: &str) -> bool {
 /**
  * Estimate a suitable subsampling rate `-c` from raw sequencing input files.
  * For .gz files, the decompressed size is estimated as 4x the compressed size.
- * Returns ceiling(total_estimated_size / 16G) * 1000, with a minimum of 1000.
+ * Returns ceiling(total_estimated_size / 10G) * 1000, with a minimum of 1000.
  * 
- * This is chosen so that the size of the memory usage is roughly under 2GB, for 
+ * This is chosen so that the number of sketched (k,v)-mers is around 10M, for 
  * efficient loading and in-memory processing.
  * 
  * Returns (used_c, total_estimated_size).
  */
 pub fn estimate_c_from_raw_files(files: &[&str]) -> (usize, u64) {
-    const SIXTEEN_GB: u64 = 16 * 1024 * 1024 * 1024;
+    const TEN_GB: u64 = 10 * 1024 * 1024 * 1024;
     const GZ_FACTOR: u64 = 4; // Estimated decompressed size is 4x compressed size for .gz files
 
     let total_size: u64 = files.iter()
@@ -147,6 +147,8 @@ pub fn estimate_c_from_raw_files(files: &[&str]) -> (usize, u64) {
         return (1000, 0);
     }
 
-    let chunks = total_size.div_ceil(SIXTEEN_GB);
-    ((chunks as usize) * 1000, total_size)
+    // let chunks = total_size.div_ceil(SIXTEEN_GB);
+    // ((chunks as usize) * 1000, total_size)
+
+    (((total_size as f64 / TEN_GB as f64) * 1000.).ceil() as usize, total_size)
 }

@@ -153,7 +153,7 @@ Apart from `plot_all.py`, you can also use the individual scripts and adjust the
     <img src="./figures/SRR7498042_error_spectrum_dep_t.png"/>
   </p>
 
-- **Visualizing coverage** (beta)
+- **Visualizing coverage**
 
   ```bash
   python scripts/plot_coverage.py example/SRR7498042.kvmer.csv example/SRR7498042.summary_error_rate.csv figures/SRR7498042_coverage.png
@@ -165,7 +165,7 @@ Apart from `plot_all.py`, you can also use the individual scripts and adjust the
     <img src="./figures/SRR7498042_coverage.png"/>
   </p> 
 
-- **Quality score calibration** (beta)
+- **Quality score calibration**
 
   ```bash
   python ./scripts/plot_qscore_calibration.py example/SRR7498042.summary_phred.csv figures/SRR7498042_qscore_calibration.png
@@ -177,7 +177,7 @@ Apart from `plot_all.py`, you can also use the individual scripts and adjust the
     <img src="./figures/SRR7498042_qscore_calibration.png"/>
   </p> 
 
-- **Dependence of error rate on position in the read** (beta)
+- **Dependence of error rate on position in the read**
 
   ```bash
   python ./scripts/plot_read_position.py example/SRR7498042.summary_read_position.csv figures/SRR7498042_read_position.png
@@ -189,10 +189,24 @@ Apart from `plot_all.py`, you can also use the individual scripts and adjust the
     <img src="./figures/SRR7498042_read_position.png"/>
   </p> 
 
+- **Dependence of error rate on GC-content of the read**
+
+  ```bash
+  python ./scripts/plot_gc_content.py example/SRR7498042.summary_gc_content.csv figures/SRR7498042_gc_content.png
+  ```
+
+  will plot the empirical error rate observed in sketched (*k*, *v*)-mers with respect to the GC-content of the read where they come from.
+
+   <p align="center">
+    <img src="./figures/SRR7498042_gc_content.png"/>
+  </p> 
+  
 
 ## Contribution
 
 This is my first project in rust and this project is in early stages of development. All contributions, suggestions, and feature requests are welcomed!
+
+I document some key design choices as well as known limitations of skiver in [this documentation](./docs/design_choices.md) for future reference and directions for improvements.
 
 ## Citation
 

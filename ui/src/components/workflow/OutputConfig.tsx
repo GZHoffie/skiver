@@ -50,7 +50,7 @@ export function OutputConfig({
           onChange={(e) => onPrefixChange(e.target.value)}
           disabled={disabled}
           placeholder="e.g. sample1"
-          className={prefixError ? "error" : undefined}
+          className={`output-prefix-input${prefixError ? " error" : ""}`}
         />
       </div>
     </div>

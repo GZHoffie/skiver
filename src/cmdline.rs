@@ -27,10 +27,10 @@ pub struct SketchArgs {
     #[clap(multiple=true, help_heading = "INPUT", help = "fasta/fastq files; gzip optional.")]
     pub files: Vec<String>,
 
-    #[clap(short, default_value_t = 19, help_heading = "ALGORITHM", help ="Length of keys.")]
+    #[clap(short, default_value_t = 17, help_heading = "ALGORITHM", help ="Length of keys.")]
     pub k: u8,
 
-    #[clap(short, default_value_t = 19, help_heading = "ALGORITHM", help ="Length of values.")]
+    #[clap(short, default_value_t = 17, help_heading = "ALGORITHM", help ="Length of values.")]
     pub v: u8,
 
     #[clap(short, help_heading = "ALGORITHM", help = "Subsampling rate. If not set, automatically determined as ceiling(total_input_size / 16G) * 1000 (decompressed size estimated as 4x for .gz files).")]
@@ -58,13 +58,13 @@ pub struct AnalyzeArgs {
     #[clap(multiple=true, help_heading = "INPUT", help = "fasta/fastq files; gzip optional.")]
     pub files: Vec<String>,
 
-    #[clap(short = 'k', default_value_t = 19, help_heading = "ALGORITHM", help ="Length of keys.")]
+    #[clap(short = 'k', default_value_t = 17, help_heading = "ALGORITHM", help ="Length of keys.")]
     pub k: u8,
 
-    #[clap(short = 'v', default_value_t = 19, help_heading = "ALGORITHM", help ="Length of values.")]
+    #[clap(short = 'v', default_value_t = 17, help_heading = "ALGORITHM", help ="Length of values.")]
     pub v: u8,
 
-    #[clap(short = 'c', help_heading = "ALGORITHM", help = "Subsampling rate. If not set, automatically determined as ceiling(total_input_size / 16G) * 1000 (decompressed size estimated as 4x for .gz files).")]
+    #[clap(short = 'c', help_heading = "ALGORITHM", help = "Subsampling rate. If not set, automatically determined as ceiling(total_input_size / 10G) * 1000 (decompressed size estimated as 4x for .gz files).")]
     pub c: Option<usize>,
 
     #[clap(short = 'l', long = "lower-bound", help_heading = "ALGORITHM", help = "Lower bound for the number of times the consensus appears in the read for it to be considered in the profiling. Default: 0 when the reference ('-r') is provided, 10 otherwise.")]
@@ -76,7 +76,7 @@ pub struct AnalyzeArgs {
     #[clap(long = "use-all", help_heading = "ALGORITHM", help = "Not excluding the outliers.")]
     pub use_all: bool,
 
-    #[clap(short = 'e', long = "outlier-threshold", default_value_t = 1e-9, help_heading = "ALGORITHM", help = "P-value threshold for the Binomial outlier test: a key is removed if P(X <= observed) < threshold under the fitted Weibull hazard model.")]
+    #[clap(short = 'e', long = "outlier-threshold", default_value_t = 1e-12, help_heading = "ALGORITHM", help = "P-value threshold for the Binomial outlier test: a key is removed if P(X <= observed) < threshold under the fitted Weibull hazard model.")]
     pub outlier_threshold: f32,
 
     #[clap(long = "num-experiments", default_value_t = 100, hidden = true, help_heading = "ALGORITHM", help = "Number of experiments in bootstrapping for estimating the parameters.")]
@@ -109,8 +109,9 @@ pub struct AnalyzeArgs {
     #[clap(long, default_value_t = String::from("weibull"), help_heading = "ALGORITHM", help = "Model used to fit the hazard rates vs. t. Should be one of 'constant' (assuming that the hazard rate is constant over t), 'weibull' (assuming T follows a discrete Weibull distribution).")]
     pub hazard_model: String,
 
-    #[clap(long = "first-base-only", hidden = true, help_heading = "ALGORITHM", help = "[FOR TESTING] In ReadPositionSummary and PhredScoreSummary, consider only the first base of each value instead of all bases up to an error.")]
-    pub first_base_only: bool,
+    #[clap(long, default_value_t = 5, help_heading = "OUTPUT", help = "Width (in %) of each GC content bin in the GC content summary.")]
+    pub gc_content_step: u8,
+
 }
 
 #[derive(Args, Default)]

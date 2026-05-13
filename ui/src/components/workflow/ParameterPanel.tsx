@@ -173,7 +173,7 @@ export function ParameterPanel({
           />
           <NumFieldOpt
             label={<>Subsampling parameter <i>c</i></>}
-            description={<>Retain only 1-in-<i>c</i> keys to reduce memory usage. If not set, this is chosen automatically to make the memory usage below 2 GB.</>}
+            description={<>Retain only 1-in-<i>c</i> keys to reduce memory usage. If not set, this is chosen automatically from the estimated input size.</>}
             value={sketch.c}
             onChange={(v) => setSketch("c", v)}
             min={1} placeholder="auto" disabled={disabled}
@@ -207,11 +207,11 @@ export function ParameterPanel({
             description={<>P-value threshold for identifying and removing outlier keys before fitting the error model.</>}
             value={analyze.outlier_threshold}
             onChange={(v) => setAnalyze("outlier_threshold", v)}
-            min={0} step={1e-10} disabled={disabled}
+            min={0} step={1e-12} disabled={disabled}
           />
           <NumFieldOpt
             label="Lower bound for key coverage"
-            description={<>Minimum coverage a key must have to be included in the analysis. Leave blank to determine automatically.</>}
+            description={<>Minimum coverage a key must have to be included in the analysis. Leave blank to use the Rust default: 0 with a reference, 10 otherwise.</>}
             value={analyze.lower_bound}
             onChange={(v) => setAnalyze("lower_bound", v)}
             min={0} placeholder="auto" disabled={disabled}
