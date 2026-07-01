@@ -5,9 +5,6 @@
 
 # Skiver: Reference-free quality control of (meta)genomic sequencing datasets using (*k*, *v*)-mer sketches
 
-> [!WARNING]  
-> This tool is under development and testing, not production-ready yet.
-
 Skiver is a tool that aims to perform quality control for a set of reads, estimating the sequencing error rates/types, without relying on the quality scores or the need for a reference genome. It works the best for metagenomic samples where at least one genome has high coverage (>20 $\times$).
 
 ## Installation
