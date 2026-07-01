@@ -41,6 +41,7 @@ const DEFAULT_ANALYZE: AnalyzeParams = {
   ignore_smallest_t: 2,
   hazard_model: "weibull",
   num_experiments: 100,
+  read_length_step: 10000,
   reference: null,
 };
 

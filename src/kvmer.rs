@@ -237,7 +237,7 @@ impl KVmerSet {
         (key_containment, key_value_containment)
     }
 
-    pub fn get_stats(&self, threshold: u32) -> KVmerStats {
+    pub fn get_stats(&self, threshold: u32, read_length_step: u32) -> KVmerStats {
         let mut keys: Vec<u64> = Vec::new();
         let mut consensus_values: Vec<u64> = Vec::new();
         let mut kvmer_summary = KVmerSummary::new(self.value_size as usize);
@@ -272,7 +272,7 @@ impl KVmerSet {
                 error_spectrum.update(kvmer_summary.error_counts_per_key.last().unwrap().clone(), kvmer_summary.forward_error_counts_per_key.last().unwrap().clone());
                 phred_summary.update(max_value, self.value_size, value_map);
                 gc_content_summary.update(max_value, self.value_size, value_map);
-                read_length_summary.update(max_value, self.value_size, value_map);
+                read_length_summary.update(max_value, self.value_size, value_map, read_length_step);
                 read_position_summary.update(max_value, self.value_size, value_map);
             }
         }
@@ -292,7 +292,7 @@ impl KVmerSet {
     }
 
     #[allow(unused)]
-    pub fn get_stats_with_reference(&self, threshold: u32, reference: &KVmerSet) -> KVmerStats {
+    pub fn get_stats_with_reference(&self, threshold: u32, reference: &KVmerSet, read_length_step: u32) -> KVmerStats {
         let mut keys: Vec<u64> = Vec::new();
         let mut consensus_values: Vec<u64> = Vec::new();
         let mut kvmer_summary = KVmerSummary::new(self.value_size as usize);
@@ -335,7 +335,7 @@ impl KVmerSet {
                 error_spectrum.update(kvmer_summary.error_counts_per_key.last().unwrap().clone(), kvmer_summary.forward_error_counts_per_key.last().unwrap().clone());
                 phred_summary.update(consensus_value, self.value_size, value_map);
                 gc_content_summary.update(consensus_value, self.value_size, value_map);
-                read_length_summary.update(consensus_value, self.value_size, value_map);
+                read_length_summary.update(consensus_value, self.value_size, value_map, read_length_step);
                 read_position_summary.update(consensus_value, self.value_size, value_map);
             }
         }

@@ -12,7 +12,7 @@ After running `skiver analyze`, it produces files with the specified prefix,
 |`[prefix].summary_phred.csv`|Empirical error rate of the Phred scores|
 |`[prefix].summary_read_position.csv`|Empirical error rate of each position in the read|
 |`[prefix].summary_gc_content.csv`|Empirical error rate of the reads with a certain GC-content|
-|`[prefix].summary_read_length.csv`|Empirical error rate of the reads in 10kb read-length intervals|
+|`[prefix].summary_read_length.csv`|Empirical error rate of the reads in read-length intervals|
 
 Below, we explain the fields reported in each csv file.
 
@@ -106,11 +106,11 @@ The other fields have the identical meaning as that of `summary_phred.csv`.
 
 ### `[prefix].summary_read_length.csv`
 
-This file estimates the dependence of error rate on read length using 10kb read-length bins.
+This file estimates the dependence of error rate on read length using read-length bins. The default bin width is 10kb and can be changed with `--read-length-step`.
 
 |Fields|Interpretation|
 |------|--------------|
-|`read_length_min`, `read_length_max_exclusive`|Represent a range of reads whose trimmed read length is >= `read_length_min` and < `read_length_max_exclusive`, e.g. `0,10000`, `10000,20000`, and so on.|
+|`read_length_min`, `read_length_max_exclusive`|Represent a range of reads whose trimmed read length is >= `read_length_min` and < `read_length_max_exclusive`, e.g. with the default setting: `0,10000`, `10000,20000`, and so on.|
 
 The other fields have the identical meaning as that of `summary_phred.csv`.
 

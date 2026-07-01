@@ -112,6 +112,9 @@ pub struct AnalyzeArgs {
     #[clap(long, default_value_t = 5, help_heading = "OUTPUT", help = "Width (in %) of each GC content bin in the GC content summary.")]
     pub gc_content_step: u8,
 
+    #[clap(long, default_value_t = 10_000, help_heading = "OUTPUT", help = "Width (in bases) of each read length bin in the read length summary.")]
+    pub read_length_step: u32,
+
 }
 
 #[derive(Args, Default)]
@@ -149,4 +152,3 @@ pub struct MapArgs {
     #[clap(short, help_heading = "OUTPUT", help = "Verbose output per-read k-mer hit information to stdout.")]
     pub print_verbose: bool,
 }
-

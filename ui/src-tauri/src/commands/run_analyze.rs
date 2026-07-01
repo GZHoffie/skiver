@@ -28,6 +28,10 @@ pub async fn run_analyze(app: tauri::AppHandle, params: AnalyzeParams) -> Result
         "--num-experiments".into(),
         params.num_experiments.to_string(),
     ]);
+    args.extend([
+        "--read-length-step".into(),
+        params.read_length_step.to_string(),
+    ]);
     args.extend(["-e".into(), params.outlier_threshold.to_string()]);
     if let Some(lb) = params.lower_bound {
         args.extend(["-l".into(), lb.to_string()]);

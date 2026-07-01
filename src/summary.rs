@@ -600,11 +600,9 @@ impl GCContentSummary {
     }
 }
 
-const READ_LENGTH_BIN_SIZE: u32 = 10_000;
-
 /// Read-length error calibration statistics.
 /// Stores per-key correct/error counts indexed by (read_length_bin_min, 0-based position in value).
-/// Uses the same hazard model as GCContentSummary with fixed 10kb read-length bins.
+/// Uses the same hazard model as GCContentSummary with configurable read-length bins.
 pub struct ReadLengthSummary {
     /// Per-key correct counts indexed by (read length bin minimum, 0-based position in value).
     pub correct_pos_per_key: Vec<HashMap<(u32, u8), u64>>,
@@ -622,12 +620,13 @@ impl ReadLengthSummary {
         }
     }
 
-    pub fn update(&mut self, consensus: u64, value_size: u8, value_map: &HashMap<u64, Vec<ValueInfo>>) {
+    pub fn update(&mut self, consensus: u64, value_size: u8, value_map: &HashMap<u64, Vec<ValueInfo>>, step: u32) {
         let mut key_correct_pos: HashMap<(u32, u8), u64> = HashMap::new();
         let mut key_error_pos: HashMap<(u32, u8), u64> = HashMap::new();
+        let step = step.max(1);
         for (value, info_list) in value_map {
             for info in info_list {
-                let read_length_bin_min = (info.read_length / READ_LENGTH_BIN_SIZE) * READ_LENGTH_BIN_SIZE;
+                let read_length_bin_min = (info.read_length / step) * step;
                 for p in 0..value_size as usize {
                     let bit_shift = 2 * (value_size as usize - 1 - p);
                     let value_base     = (value     >> bit_shift) & 0b11;
@@ -696,9 +695,10 @@ impl ReadLengthSummary {
         lambdas
     }
 
-    pub fn to_csv(&self, indices: &[usize], v_min: usize, v_max: usize, global_beta: f32, k: usize) -> String {
+    pub fn to_csv(&self, indices: &[usize], v_min: usize, v_max: usize, global_beta: f32, k: usize, step: u32) -> String {
         let lambdas = self._lambda_with_indices(indices, 0.0, global_beta, v_min, v_max, k);
         let bootstrap_lambdas = self.bootstrap_lambdas.borrow();
+        let step = step.max(1);
         let mut csv = String::from("read_length_min,read_length_max_exclusive,per_base_error_rate,per_base_error_rate_5-95th_percentile,num_correct,num_error\n");
         let mut bins: Vec<u32> = lambdas.keys().copied().collect();
         bins.sort_unstable();
@@ -715,7 +715,7 @@ impl ReadLengthSummary {
             let per_base_error_rate_ci = (1.0 - (-(lambda_ci.0 as f64)).exp(), 1.0 - (-(lambda_ci.1 as f64)).exp());
             csv.push_str(&format!(
                 "{},{},{:.6},{:.6}~{:.6},{},{}\n",
-                bin_min, bin_min + READ_LENGTH_BIN_SIZE, per_base_error_rate, per_base_error_rate_ci.0, per_base_error_rate_ci.1, total_correct, total_error,
+                bin_min, bin_min + step, per_base_error_rate, per_base_error_rate_ci.0, per_base_error_rate_ci.1, total_correct, total_error,
             ));
         }
         csv

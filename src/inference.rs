@@ -846,6 +846,7 @@ impl ErrorAnalyzer {
             let v_max = v.saturating_sub(self.args.ignore_largest_t);
             let k = self.args.k as usize;
             let step = self.args.gc_content_step.max(1) as u8;
+            let read_length_step = self.args.read_length_step.max(1);
 
             fs::write(
                 format!("{}.summary_phred.csv", prefix),
@@ -857,7 +858,7 @@ impl ErrorAnalyzer {
             ).unwrap();
             fs::write(
                 format!("{}.summary_read_length.csv", prefix),
-                stats.read_length_summary.to_csv(&indices, v_min, v_max, beta, k),
+                stats.read_length_summary.to_csv(&indices, v_min, v_max, beta, k, read_length_step),
             ).unwrap();
         }
 
