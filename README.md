@@ -3,7 +3,7 @@
   <img src="./figures/misc/logo.png" alt="Logo" width="300"/>
 </p>
 
-# Skiver: Rapid quality control of genome sequencing datasets using (*k*, *v*)-mer sketches
+# Skiver: Reference-free quality control of (meta)genomic sequencing datasets using (*k*, *v*)-mer sketches
 
 > [!WARNING]  
 > This tool is under development and testing, not production-ready yet.
@@ -17,7 +17,7 @@ Skiver is a tool that aims to perform quality control for a set of reads, estima
 Simply download the executable from the latest release, via the following
 
 ```bash
-wget https://github.com/GZHoffie/skiver/releases/download/v0.2.1/skiver
+wget https://github.com/GZHoffie/skiver/releases/download/v0.2.2/skiver
 chmod +x ./skiver
 ./skiver
 ```
@@ -210,4 +210,4 @@ I document some key design choices as well as known limitations of skiver in [th
 
 ## Citation
 
-Gu, Z., Sharma, P., Wong, L., & Nagarajan, N. (2026). [Skiver: Alignment-free Estimation of Sequencing Error Rates and Spectra using (*k*, *v*)-mer Sketches](https://www.biorxiv.org/content/10.64898/2026.02.12.705514v1). *bioRxiv*, 2026-02.
+Gu, Z., Sharma, P., Wong, L., & Nagarajan, N. (2026). [Skiver: Reference-free quality control of metagenomic sequencing datasets using (*k*, *v*)-mer Sketches](https://www.biorxiv.org/content/10.64898/2026.02.12.705514v2). *bioRxiv*, 2026-06.
