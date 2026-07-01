@@ -77,6 +77,7 @@ export function useSkiverRun() {
           summaryErrorSpectrumDepT: `${prefix}.summary_error_spectrum_dependence_on_t.csv`,
           summaryPhred: `${prefix}.summary_phred.csv`,
           summaryGcContent: `${prefix}.summary_gc_content.csv`,
+          summaryReadLength: `${prefix}.summary_read_length.csv`,
           summaryReadPosition: `${prefix}.summary_read_position.csv`,
         };
 

@@ -1,6 +1,6 @@
 # Interpreting skiver reports
 
-After running `skiver analyze`, it produces 6 files with the specified prefix,
+After running `skiver analyze`, it produces files with the specified prefix,
 
 |File name|Content|
 |---------|-------|
@@ -12,6 +12,7 @@ After running `skiver analyze`, it produces 6 files with the specified prefix,
 |`[prefix].summary_phred.csv`|Empirical error rate of the Phred scores|
 |`[prefix].summary_read_position.csv`|Empirical error rate of each position in the read|
 |`[prefix].summary_gc_content.csv`|Empirical error rate of the reads with a certain GC-content|
+|`[prefix].summary_read_length.csv`|Empirical error rate of the reads in 10kb read-length intervals|
 
 Below, we explain the fields reported in each csv file.
 
@@ -95,11 +96,21 @@ Each value is paired with a `5-95th_percentile` confidence interval, which is es
 
 ### `[prefix].summary_gc_content.csv`
 
-[Here](./example/SRR7498042.summary_gc_content.csv) is an example of the Phred score summary file.
+[Here](./example/SRR7498042.summary_gc_content.csv) is an example of the GC-content summary file.
 
 |Fields|Interpretation|
 |------|--------------|
 |`gc_content_min`, `gc_content_max_exclusive`|Represent a range of reads whose GC-content is >= `gc_content_min` and < `gc_content_max_exclusive`|
+
+The other fields have the identical meaning as that of `summary_phred.csv`.
+
+### `[prefix].summary_read_length.csv`
+
+This file estimates the dependence of error rate on read length using 10kb read-length bins.
+
+|Fields|Interpretation|
+|------|--------------|
+|`read_length_min`, `read_length_max_exclusive`|Represent a range of reads whose trimmed read length is >= `read_length_min` and < `read_length_max_exclusive`, e.g. `0,10000`, `10000,20000`, and so on.|
 
 The other fields have the identical meaning as that of `summary_phred.csv`.
 

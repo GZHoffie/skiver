@@ -41,6 +41,7 @@ export interface CsvPaths {
   summaryErrorSpectrumDepT: string;
   summaryPhred: string;
   summaryGcContent: string;
+  summaryReadLength: string;
   summaryReadPosition: string;
 }
 

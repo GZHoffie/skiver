@@ -310,22 +310,22 @@ pub unsafe fn extract_markers_avx2_masked(string: &[u8], keys_vec: &mut Vec<u64>
         if h1 < threshold_marker {
             keys_vec.push(key1 as u64);
             values_vec.push(value1 as u64);
-            value_info_vec.push(ValueInfo { qual: vec![], start_index: (offsets[0] + i - v + 1) as u32, dist_to_read_end: string.len() as u32 - (offsets[0] + i - v + 1) as u32, is_forward: true, gc_content: 0 });
+            value_info_vec.push(ValueInfo { qual: vec![], start_index: (offsets[0] + i - v + 1) as u32, dist_to_read_end: string.len() as u32 - (offsets[0] + i - v + 1) as u32, is_forward: true, gc_content: 0, read_length: string.len() as u32 });
         }
         if h2 < threshold_marker {
             keys_vec.push(key2 as u64);
             values_vec.push(value2 as u64);
-            value_info_vec.push(ValueInfo { qual: vec![], start_index: (offsets[1] + i - v + 1) as u32, dist_to_read_end: string.len() as u32 - (offsets[1] + i - v + 1) as u32, is_forward: true, gc_content: 0 });
+            value_info_vec.push(ValueInfo { qual: vec![], start_index: (offsets[1] + i - v + 1) as u32, dist_to_read_end: string.len() as u32 - (offsets[1] + i - v + 1) as u32, is_forward: true, gc_content: 0, read_length: string.len() as u32 });
         }
         if h3 < threshold_marker {
             keys_vec.push(key3 as u64);
             values_vec.push(value3 as u64);
-            value_info_vec.push(ValueInfo { qual: vec![], start_index: (offsets[2] + i - v + 1) as u32, dist_to_read_end: string.len() as u32 - (offsets[2] + i - v + 1) as u32, is_forward: true, gc_content: 0 });
+            value_info_vec.push(ValueInfo { qual: vec![], start_index: (offsets[2] + i - v + 1) as u32, dist_to_read_end: string.len() as u32 - (offsets[2] + i - v + 1) as u32, is_forward: true, gc_content: 0, read_length: string.len() as u32 });
         }
         if h4 < threshold_marker {
             keys_vec.push(key4 as u64);
             values_vec.push(value4 as u64);
-            value_info_vec.push(ValueInfo { qual: vec![], start_index: (offsets[3] + i - v + 1) as u32, dist_to_read_end: string.len() as u32 - (offsets[3] + i - v + 1) as u32, is_forward: true, gc_content: 0 });
+            value_info_vec.push(ValueInfo { qual: vec![], start_index: (offsets[3] + i - v + 1) as u32, dist_to_read_end: string.len() as u32 - (offsets[3] + i - v + 1) as u32, is_forward: true, gc_content: 0, read_length: string.len() as u32 });
         }
 
         if bidirectional {
@@ -348,22 +348,22 @@ pub unsafe fn extract_markers_avx2_masked(string: &[u8], keys_vec: &mut Vec<u64>
             if hr1 < threshold_marker {
                 keys_vec.push(rkey1 as u64);
                 values_vec.push(rvalue1 as u64);
-                value_info_vec.push(ValueInfo { qual: vec![], start_index: (offsets[0] + i - k + 1) as u32, dist_to_read_end: string.len() as u32 - (offsets[0] + i - k + 1) as u32, is_forward: false, gc_content: 0 });
+                value_info_vec.push(ValueInfo { qual: vec![], start_index: (offsets[0] + i - k + 1) as u32, dist_to_read_end: string.len() as u32 - (offsets[0] + i - k + 1) as u32, is_forward: false, gc_content: 0, read_length: string.len() as u32 });
             }
             if hr2 < threshold_marker {
                 keys_vec.push(rkey2 as u64);
                 values_vec.push(rvalue2 as u64);
-                value_info_vec.push(ValueInfo { qual: vec![], start_index: (offsets[1] + i - k + 1) as u32, dist_to_read_end: string.len() as u32 - (offsets[1] + i - k + 1) as u32, is_forward: false, gc_content: 0 });
+                value_info_vec.push(ValueInfo { qual: vec![], start_index: (offsets[1] + i - k + 1) as u32, dist_to_read_end: string.len() as u32 - (offsets[1] + i - k + 1) as u32, is_forward: false, gc_content: 0, read_length: string.len() as u32 });
             }
             if hr3 < threshold_marker {
                 keys_vec.push(rkey3 as u64);
                 values_vec.push(rvalue3 as u64);
-                value_info_vec.push(ValueInfo { qual: vec![], start_index: (offsets[2] + i - k + 1) as u32, dist_to_read_end: string.len() as u32 - (offsets[2] + i - k + 1) as u32, is_forward: false, gc_content: 0 });
+                value_info_vec.push(ValueInfo { qual: vec![], start_index: (offsets[2] + i - k + 1) as u32, dist_to_read_end: string.len() as u32 - (offsets[2] + i - k + 1) as u32, is_forward: false, gc_content: 0, read_length: string.len() as u32 });
             }
             if hr4 < threshold_marker {
                 keys_vec.push(rkey4 as u64);
                 values_vec.push(rvalue4 as u64);
-                value_info_vec.push(ValueInfo { qual: vec![], start_index: (offsets[3] + i - k + 1) as u32, dist_to_read_end: string.len() as u32 - (offsets[3] + i - k + 1) as u32, is_forward: false, gc_content: 0 });
+                value_info_vec.push(ValueInfo { qual: vec![], start_index: (offsets[3] + i - k + 1) as u32, dist_to_read_end: string.len() as u32 - (offsets[3] + i - k + 1) as u32, is_forward: false, gc_content: 0, read_length: string.len() as u32 });
             }
         }
     }
@@ -515,22 +515,22 @@ pub unsafe fn extract_markers_avx2_masked_with_qual(string: &[u8], qual: &[u8], 
         if h1 < threshold_marker {
             keys_vec.push(key1);
             values_vec.push(value1);
-            value_info_vec.push(ValueInfo { qual: qual[offsets[0] + i - v + 1..=offsets[0] + i].to_vec(), start_index: (offsets[0] + i - v + 1) as u32, dist_to_read_end: string.len() as u32 - (offsets[0] + i - v + 1) as u32, is_forward: true, gc_content });
+            value_info_vec.push(ValueInfo { qual: qual[offsets[0] + i - v + 1..=offsets[0] + i].to_vec(), start_index: (offsets[0] + i - v + 1) as u32, dist_to_read_end: string.len() as u32 - (offsets[0] + i - v + 1) as u32, is_forward: true, gc_content, read_length: string.len() as u32 });
         }
         if h2 < threshold_marker {
             keys_vec.push(key2);
             values_vec.push(value2);
-            value_info_vec.push(ValueInfo { qual: qual[offsets[1] + i - v + 1..=offsets[1] + i].to_vec(), start_index: (offsets[1] + i - v + 1) as u32, dist_to_read_end: string.len() as u32 - (offsets[1] + i - v + 1) as u32, is_forward: true, gc_content });
+            value_info_vec.push(ValueInfo { qual: qual[offsets[1] + i - v + 1..=offsets[1] + i].to_vec(), start_index: (offsets[1] + i - v + 1) as u32, dist_to_read_end: string.len() as u32 - (offsets[1] + i - v + 1) as u32, is_forward: true, gc_content, read_length: string.len() as u32 });
         }
         if h3 < threshold_marker {
             keys_vec.push(key3);
             values_vec.push(value3);
-            value_info_vec.push(ValueInfo { qual: qual[offsets[2] + i - v + 1..=offsets[2] + i].to_vec(), start_index: (offsets[2] + i - v + 1) as u32, dist_to_read_end: string.len() as u32 - (offsets[2] + i - v + 1) as u32, is_forward: true, gc_content });
+            value_info_vec.push(ValueInfo { qual: qual[offsets[2] + i - v + 1..=offsets[2] + i].to_vec(), start_index: (offsets[2] + i - v + 1) as u32, dist_to_read_end: string.len() as u32 - (offsets[2] + i - v + 1) as u32, is_forward: true, gc_content, read_length: string.len() as u32 });
         }
         if h4 < threshold_marker {
             keys_vec.push(key4);
             values_vec.push(value4);
-            value_info_vec.push(ValueInfo { qual: qual[offsets[3] + i - v + 1..=offsets[3] + i].to_vec(), start_index: (offsets[3] + i - v + 1) as u32, dist_to_read_end: string.len() as u32 - (offsets[3] + i - v + 1) as u32, is_forward: true, gc_content });
+            value_info_vec.push(ValueInfo { qual: qual[offsets[3] + i - v + 1..=offsets[3] + i].to_vec(), start_index: (offsets[3] + i - v + 1) as u32, dist_to_read_end: string.len() as u32 - (offsets[3] + i - v + 1) as u32, is_forward: true, gc_content, read_length: string.len() as u32 });
         }
 
         if bidirectional {
@@ -554,22 +554,22 @@ pub unsafe fn extract_markers_avx2_masked_with_qual(string: &[u8], qual: &[u8], 
             if hr1 < threshold_marker {
                 keys_vec.push(rkey1);
                 values_vec.push(rvalue1);
-                value_info_vec.push(ValueInfo { qual: (0..v).map(|p| qual[offsets[0] + i - k - p]).collect(), start_index: (offsets[0] + i - k + 1) as u32, dist_to_read_end: string.len() as u32 - (offsets[0] + i - k + 1) as u32, is_forward: false, gc_content });
+                value_info_vec.push(ValueInfo { qual: (0..v).map(|p| qual[offsets[0] + i - k - p]).collect(), start_index: (offsets[0] + i - k + 1) as u32, dist_to_read_end: string.len() as u32 - (offsets[0] + i - k + 1) as u32, is_forward: false, gc_content, read_length: string.len() as u32 });
             }
             if hr2 < threshold_marker {
                 keys_vec.push(rkey2);
                 values_vec.push(rvalue2);
-                value_info_vec.push(ValueInfo { qual: (0..v).map(|p| qual[offsets[1] + i - k - p]).collect(), start_index: (offsets[1] + i - k + 1) as u32, dist_to_read_end: string.len() as u32 - (offsets[1] + i - k + 1) as u32, is_forward: false, gc_content });
+                value_info_vec.push(ValueInfo { qual: (0..v).map(|p| qual[offsets[1] + i - k - p]).collect(), start_index: (offsets[1] + i - k + 1) as u32, dist_to_read_end: string.len() as u32 - (offsets[1] + i - k + 1) as u32, is_forward: false, gc_content, read_length: string.len() as u32 });
             }
             if hr3 < threshold_marker {
                 keys_vec.push(rkey3);
                 values_vec.push(rvalue3);
-                value_info_vec.push(ValueInfo { qual: (0..v).map(|p| qual[offsets[2] + i - k - p]).collect(), start_index: (offsets[2] + i - k + 1) as u32, dist_to_read_end: string.len() as u32 - (offsets[2] + i - k + 1) as u32, is_forward: false, gc_content });
+                value_info_vec.push(ValueInfo { qual: (0..v).map(|p| qual[offsets[2] + i - k - p]).collect(), start_index: (offsets[2] + i - k + 1) as u32, dist_to_read_end: string.len() as u32 - (offsets[2] + i - k + 1) as u32, is_forward: false, gc_content, read_length: string.len() as u32 });
             }
             if hr4 < threshold_marker {
                 keys_vec.push(rkey4);
                 values_vec.push(rvalue4);
-                value_info_vec.push(ValueInfo { qual: (0..v).map(|p| qual[offsets[3] + i - k - p]).collect(), start_index: (offsets[3] + i - k + 1) as u32, dist_to_read_end: string.len() as u32 - (offsets[3] + i - k + 1) as u32, is_forward: false, gc_content });
+                value_info_vec.push(ValueInfo { qual: (0..v).map(|p| qual[offsets[3] + i - k - p]).collect(), start_index: (offsets[3] + i - k + 1) as u32, dist_to_read_end: string.len() as u32 - (offsets[3] + i - k + 1) as u32, is_forward: false, gc_content, read_length: string.len() as u32 });
             }
         }
     }

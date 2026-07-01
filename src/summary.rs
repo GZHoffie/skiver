@@ -600,6 +600,135 @@ impl GCContentSummary {
     }
 }
 
+const READ_LENGTH_BIN_SIZE: u32 = 10_000;
+
+/// Read-length error calibration statistics.
+/// Stores per-key correct/error counts indexed by (read_length_bin_min, 0-based position in value).
+/// Uses the same hazard model as GCContentSummary with fixed 10kb read-length bins.
+pub struct ReadLengthSummary {
+    /// Per-key correct counts indexed by (read length bin minimum, 0-based position in value).
+    pub correct_pos_per_key: Vec<HashMap<(u32, u8), u64>>,
+    /// Per-key error counts indexed by (read length bin minimum, 0-based position in value).
+    pub error_pos_per_key: Vec<HashMap<(u32, u8), u64>>,
+    pub bootstrap_lambdas: RefCell<HashMap<u32, Vec<f32>>>,
+}
+
+impl ReadLengthSummary {
+    pub fn new() -> Self {
+        ReadLengthSummary {
+            correct_pos_per_key: Vec::new(),
+            error_pos_per_key: Vec::new(),
+            bootstrap_lambdas: RefCell::new(HashMap::new()),
+        }
+    }
+
+    pub fn update(&mut self, consensus: u64, value_size: u8, value_map: &HashMap<u64, Vec<ValueInfo>>) {
+        let mut key_correct_pos: HashMap<(u32, u8), u64> = HashMap::new();
+        let mut key_error_pos: HashMap<(u32, u8), u64> = HashMap::new();
+        for (value, info_list) in value_map {
+            for info in info_list {
+                let read_length_bin_min = (info.read_length / READ_LENGTH_BIN_SIZE) * READ_LENGTH_BIN_SIZE;
+                for p in 0..value_size as usize {
+                    let bit_shift = 2 * (value_size as usize - 1 - p);
+                    let value_base     = (value     >> bit_shift) & 0b11;
+                    let consensus_base = (consensus >> bit_shift) & 0b11;
+                    if value_base == consensus_base {
+                        *key_correct_pos.entry((read_length_bin_min, p as u8)).or_insert(0) += 1;
+                    } else {
+                        *key_error_pos.entry((read_length_bin_min, p as u8)).or_insert(0) += 1;
+                        break;
+                    }
+                }
+            }
+        }
+        self.correct_pos_per_key.push(key_correct_pos);
+        self.error_pos_per_key.push(key_error_pos);
+    }
+
+    pub fn clear_bootstrap_results(&self) {
+        self.bootstrap_lambdas.borrow_mut().clear();
+    }
+
+    pub fn bootstrap_with_indices(&self, indices_sample: &[usize], estimated_lambda: f32, estimated_beta: f32, v_min: usize, v_max: usize, k: usize) {
+        for (bin_min, lambda) in self._lambda_with_indices(indices_sample, estimated_lambda, estimated_beta, v_min, v_max, k) {
+            self.bootstrap_lambdas.borrow_mut().entry(bin_min).or_default().push(lambda);
+        }
+    }
+
+    fn _lambda_with_indices(&self, indices_sample: &[usize], estimated_lambda: f32, estimated_beta: f32, v_min: usize, v_max: usize, k: usize) -> HashMap<u32, f32> {
+        let mut correct_pos: HashMap<(u32, u8), u64> = HashMap::new();
+        let mut error_pos: HashMap<(u32, u8), u64> = HashMap::new();
+        for &i in indices_sample {
+            for (&key, &c) in &self.correct_pos_per_key[i] {
+                *correct_pos.entry(key).or_insert(0) += c;
+            }
+            for (&key, &e) in &self.error_pos_per_key[i] {
+                *error_pos.entry(key).or_insert(0) += e;
+            }
+        }
+
+        let mut bins: Vec<u32> = correct_pos.keys().chain(error_pos.keys())
+            .map(|&(bin_min, _)| bin_min)
+            .collect();
+        bins.sort_unstable();
+        bins.dedup();
+
+        let mut lambdas = HashMap::new();
+        for bin_min in bins {
+            let mut hazard_ratios: Vec<Option<f32>> = Vec::new();
+            let mut total_correct = 0u64;
+            let mut total_error = 0u64;
+            for p in (v_min - 1)..v_max {
+                let key = (bin_min, p as u8);
+                let c = correct_pos.get(&key).copied().unwrap_or(0);
+                let e = error_pos.get(&key).copied().unwrap_or(0);
+                total_correct += c;
+                total_error += e;
+                let tot = c + e;
+                hazard_ratios.push(if tot > 0 { Some(e as f32 / tot as f32) } else { None });
+            }
+
+            if total_correct + total_error > 0 {
+                let lambda = fit_lambda_given_beta(&hazard_ratios, estimated_beta, k);
+                lambdas.insert(bin_min, if lambda.is_finite() { lambda } else { estimated_lambda });
+            }
+        }
+        lambdas
+    }
+
+    pub fn to_csv(&self, indices: &[usize], v_min: usize, v_max: usize, global_beta: f32, k: usize) -> String {
+        let lambdas = self._lambda_with_indices(indices, 0.0, global_beta, v_min, v_max, k);
+        let bootstrap_lambdas = self.bootstrap_lambdas.borrow();
+        let mut csv = String::from("read_length_min,read_length_max_exclusive,per_base_error_rate,per_base_error_rate_5-95th_percentile,num_correct,num_error\n");
+        let mut bins: Vec<u32> = lambdas.keys().copied().collect();
+        bins.sort_unstable();
+        for bin_min in bins {
+            let mut total_correct = 0u64;
+            let mut total_error = 0u64;
+            for p in (v_min - 1)..v_max {
+                total_correct += self.sum_pos(indices, &(bin_min, p as u8), true);
+                total_error += self.sum_pos(indices, &(bin_min, p as u8), false);
+            }
+            let lambda = lambdas[&bin_min];
+            let per_base_error_rate = 1.0 - (-(lambda as f64)).exp();
+            let lambda_ci = confidence_interval(bootstrap_lambdas.get(&bin_min));
+            let per_base_error_rate_ci = (1.0 - (-(lambda_ci.0 as f64)).exp(), 1.0 - (-(lambda_ci.1 as f64)).exp());
+            csv.push_str(&format!(
+                "{},{},{:.6},{:.6}~{:.6},{},{}\n",
+                bin_min, bin_min + READ_LENGTH_BIN_SIZE, per_base_error_rate, per_base_error_rate_ci.0, per_base_error_rate_ci.1, total_correct, total_error,
+            ));
+        }
+        csv
+    }
+
+    fn sum_pos(&self, indices: &[usize], key: &(u32, u8), correct: bool) -> u64 {
+        indices.iter().map(|&i| {
+            let map = if correct { &self.correct_pos_per_key[i] } else { &self.error_pos_per_key[i] };
+            map.get(key).copied().unwrap_or(0)
+        }).sum()
+    }
+}
+
 /// Read-position error calibration statistics.
 /// Stores per-key counts of correct/erroneous bases indexed by position from the
 /// start or end of the read.

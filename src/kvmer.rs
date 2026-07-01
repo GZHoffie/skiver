@@ -11,7 +11,7 @@ use std::io::{BufWriter, BufReader};
 use std::collections::HashMap;
 
 use crate::{seeding::*, types::*};
-use crate::summary::{KVmerSummary, ErrorSpectrumSummary, GCContentSummary, PhredScoreSummary, ReadPositionSummary};
+use crate::summary::{KVmerSummary, ErrorSpectrumSummary, GCContentSummary, PhredScoreSummary, ReadLengthSummary, ReadPositionSummary};
 
 /// kv-mer statistics for downstream analysis.
 pub struct KVmerStats {
@@ -23,6 +23,7 @@ pub struct KVmerStats {
     pub error_spectrum: ErrorSpectrumSummary,
     pub phred_summary: PhredScoreSummary,
     pub gc_content_summary: GCContentSummary,
+    pub read_length_summary: ReadLengthSummary,
     pub read_position_summary: ReadPositionSummary,
 }
 
@@ -243,6 +244,7 @@ impl KVmerSet {
         let mut error_spectrum = ErrorSpectrumSummary::new(self.value_size as usize);
         let mut phred_summary = PhredScoreSummary::new();
         let mut gc_content_summary = GCContentSummary::new();
+        let mut read_length_summary = ReadLengthSummary::new();
         let mut read_position_summary = ReadPositionSummary::new();
 
         for (key, value_map) in &self.key_value_qual_map {
@@ -270,6 +272,7 @@ impl KVmerSet {
                 error_spectrum.update(kvmer_summary.error_counts_per_key.last().unwrap().clone(), kvmer_summary.forward_error_counts_per_key.last().unwrap().clone());
                 phred_summary.update(max_value, self.value_size, value_map);
                 gc_content_summary.update(max_value, self.value_size, value_map);
+                read_length_summary.update(max_value, self.value_size, value_map);
                 read_position_summary.update(max_value, self.value_size, value_map);
             }
         }
@@ -283,6 +286,7 @@ impl KVmerSet {
             error_spectrum,
             phred_summary,
             gc_content_summary,
+            read_length_summary,
             read_position_summary,
         }
     }
@@ -295,6 +299,7 @@ impl KVmerSet {
         let mut error_spectrum = ErrorSpectrumSummary::new(self.value_size as usize);
         let mut phred_summary = PhredScoreSummary::new();
         let mut gc_content_summary = GCContentSummary::new();
+        let mut read_length_summary = ReadLengthSummary::new();
         let mut read_position_summary = ReadPositionSummary::new();
 
         // for debugging: the number of k-mers that the read set shares with the reference
@@ -330,6 +335,7 @@ impl KVmerSet {
                 error_spectrum.update(kvmer_summary.error_counts_per_key.last().unwrap().clone(), kvmer_summary.forward_error_counts_per_key.last().unwrap().clone());
                 phred_summary.update(consensus_value, self.value_size, value_map);
                 gc_content_summary.update(consensus_value, self.value_size, value_map);
+                read_length_summary.update(consensus_value, self.value_size, value_map);
                 read_position_summary.update(consensus_value, self.value_size, value_map);
             }
         }
@@ -347,6 +353,7 @@ impl KVmerSet {
             error_spectrum,
             phred_summary,
             gc_content_summary,
+            read_length_summary,
             read_position_summary,
         }
     }

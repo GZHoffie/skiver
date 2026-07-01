@@ -44,6 +44,8 @@ pub struct ValueInfo {
     /// GC content of the (trimmed) read this k,v-mer came from, rounded to nearest integer (%).
     /// 0 when the source had no quality data (FASTA).
     pub gc_content: u8,
+    /// Length of the trimmed read this k,v-mer came from.
+    pub read_length: u32,
 }
 
 /**
