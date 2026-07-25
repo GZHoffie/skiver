@@ -3,14 +3,81 @@ use crate::utils::*;
 use crate::inference::*;
 use crate::cmdline::AnalyzeArgs;
 
-use clap::error;
 use simple_logger::SimpleLogger;
 use log::{info, warn, error};
 use glob::glob;
-use std::fs;
+use std::fs::{self, OpenOptions};
+use std::path::Path;
+
+const OUTPUT_SUFFIXES: [&str; 8] = [
+    "hazard_rate.csv",
+    "kvmer.csv",
+    "summary_error_rate.csv",
+    "summary_error_spectrum.csv",
+    "summary_error_spectrum_dependence_on_t.csv",
+    "summary_read_position.csv",
+    "summary_phred.csv",
+    "summary_gc_content.csv",
+];
+
+fn validate_output_prefix(prefix: &str) -> Result<(Option<String>, Vec<String>), String> {
+    if prefix.is_empty() {
+        return Err("Output prefix cannot be empty.".to_string());
+    }
+
+    let prefix_path = Path::new(prefix);
+    let file_name = prefix_path.file_name()
+        .ok_or_else(|| format!("Output prefix '{}' does not contain a file name.", prefix))?;
+    if file_name.is_empty() {
+        return Err(format!("Output prefix '{}' does not contain a file name.", prefix));
+    }
+
+    let parent = prefix_path.parent().filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let created_dir = if !parent.exists() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("Could not create output directory '{}': {}", parent.display(), e))?;
+        Some(parent.display().to_string())
+    } else {
+        if !parent.is_dir() {
+            return Err(format!("Output directory '{}' is not a directory.", parent.display()));
+        }
+        None
+    };
+
+    let probe = parent.join(format!(".skiver-write-test-{}", std::process::id()));
+    OpenOptions::new().write(true).create_new(true).open(&probe)
+        .map_err(|e| format!("Output prefix '{}' is not writable: {}", prefix, e))?;
+    fs::remove_file(&probe)
+        .map_err(|e| format!("Could not remove output validation file '{}': {}", probe.display(), e))?;
+
+    let existing = OUTPUT_SUFFIXES.iter()
+        .map(|suffix| format!("{}.{}", prefix, suffix))
+        .filter(|path| Path::new(path).exists())
+        .collect();
+    Ok((created_dir, existing))
+}
 
 pub fn analyze(args: AnalyzeArgs) {
     SimpleLogger::new().with_level(log::LevelFilter::Info).init().unwrap();
+
+    let (created_dir, existing_outputs) = match validate_output_prefix(&args.output_prefix) {
+        Ok(result) => result,
+        Err(message) => {
+            error!("{}", message);
+            std::process::exit(1);
+        }
+    };
+    if let Some(directory) = created_dir {
+        info!("Created output directory '{}'.", directory);
+    }
+    if !existing_outputs.is_empty() {
+        warn!(
+            "Output files with prefix '{}' already exist and will be overwritten.",
+            args.output_prefix
+        );
+    }
+
     // [TODO] Multithreaded version is under development.
     //rayon::ThreadPoolBuilder::new().num_threads(args.threads).build_global().unwrap();
 
@@ -86,10 +153,25 @@ pub fn analyze(args: AnalyzeArgs) {
     let spectrum = analyzer.analyze(&stats);
     let analysis_output = format!("{}\n{}", header_str(!args.forward_only), spectrum_to_str(&spectrum, !args.forward_only));
 
-    if let Some(prefix) = &args.output_prefix {
-        fs::write(format!("{}.summary_error_rate.csv", prefix), &analysis_output).unwrap();
-        info!("Output written to prefix {}.", prefix);
-    } else {
-        error!("No output prefix provided. Use -o or --output-prefix to specify the output file prefix for the analysis results.");
+    fs::write(format!("{}.summary_error_rate.csv", args.output_prefix), &analysis_output).unwrap();
+    info!("Output written to prefix {}.", args.output_prefix);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn creates_missing_output_directory_and_finds_existing_outputs() {
+        let root = std::env::temp_dir().join(format!("skiver-output-test-{}", std::process::id()));
+        let prefix = root.join("nested").join("sample");
+        let existing = format!("{}.summary_error_rate.csv", prefix.display());
+        let (created, found) = validate_output_prefix(prefix.to_str().unwrap()).unwrap();
+        assert_eq!(created, Some(root.join("nested").display().to_string()));
+        fs::write(&existing, "").unwrap();
+        let (_, found_after_write) = validate_output_prefix(prefix.to_str().unwrap()).unwrap();
+        assert!(found.is_empty());
+        assert_eq!(found_after_write, vec![existing]);
+        fs::remove_dir_all(root).unwrap();
     }
 }

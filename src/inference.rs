@@ -812,7 +812,8 @@ impl ErrorAnalyzer {
         let per_base_error_rate = 1.0 - (-lambda).exp();
         let per_base_error_rate_ci = (1.0 - (-(lambda_ci.0)).exp(), 1.0 - (-(lambda_ci.1)).exp());
 
-        if let Some(prefix) = &self.args.output_prefix {
+        {
+            let prefix = &self.args.output_prefix;
             use std::fs;
             use std::fs::File;
             use std::io::{BufWriter, Write};

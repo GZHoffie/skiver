@@ -100,8 +100,8 @@ pub struct AnalyzeArgs {
     //#[clap(short = 't', long = "threads", default_value_t = 4, help_heading = "ALGORITHM", help = "Number of threads.")]
     //pub threads: usize,
 
-    #[clap(short = 'o', long = "output-prefix", help_heading = "OUTPUT", help = "Output prefix. When set, writes the report to <prefix>.*.csv.")]
-    pub output_prefix: Option<String>,
+    #[clap(short = 'o', long = "output-prefix", required = true, help_heading = "OUTPUT", help = "Output prefix. Writes the report to <prefix>.*.csv.")]
+    pub output_prefix: String,
 
     #[clap(long, default_value_t = String::from("sum_ratio"), hidden = true, help = "One of 'slope', 'linear_fit', 'ratio_mean', 'sum_ratio'.")]
     pub estimation_method: String,
@@ -149,4 +149,3 @@ pub struct MapArgs {
     #[clap(short, help_heading = "OUTPUT", help = "Verbose output per-read k-mer hit information to stdout.")]
     pub print_verbose: bool,
 }
-
