@@ -20,6 +20,13 @@ const OUTPUT_SUFFIXES: [&str; 8] = [
     "summary_gc_content.csv",
 ];
 
+const UNSUPPORTED_INPUT_MESSAGE: &str = "The current version of skiver analyze only supports either exactly one .kvmer sketch file or one or more FASTQ files (.fastq, .fq, .fastq.gz, or .fq.gz) as input.";
+
+fn is_fastq_file(file_path: &str) -> bool {
+    let lower_path = file_path.to_lowercase();
+    [".fastq", ".fq", ".fastq.gz", ".fq.gz"].iter().any(|ext| lower_path.ends_with(ext))
+}
+
 fn validate_output_prefix(prefix: &str) -> Result<(Option<String>, Vec<String>), String> {
     if prefix.is_empty() {
         return Err("Output prefix cannot be empty.".to_string());
@@ -86,22 +93,47 @@ pub fn analyze(args: AnalyzeArgs) {
     // Expand globs and categorize files before processing so we can auto-determine -c
     let mut raw_files: Vec<String> = Vec::new();
     let mut sketch_files: Vec<String> = Vec::new();
+    let mut has_unsupported_files = false;
     for file in &args.files {
-        for entry in glob(file).expect("Failed to read glob pattern") {
+        let entries = match glob(file) {
+            Ok(entries) => entries,
+            Err(_) => {
+                has_unsupported_files = true;
+                continue;
+            }
+        };
+        let mut matched = false;
+        for entry in entries {
+            matched = true;
             match entry {
                 Ok(path) => {
-                    let file_str = path.to_str().unwrap().to_string();
-                    if is_fastx_file(&file_str) {
-                        raw_files.push(file_str);
-                    } else if is_sketch_file(&file_str) {
-                        sketch_files.push(file_str);
+                    if let Some(file_str) = path.to_str() {
+                        if is_fastq_file(file_str) {
+                            raw_files.push(file_str.to_string());
+                        } else if is_sketch_file(file_str) {
+                            sketch_files.push(file_str.to_string());
+                        } else {
+                            has_unsupported_files = true;
+                        }
                     } else {
-                        warn!("File format not recognized for file: {}. Skipping.", file_str);
+                        has_unsupported_files = true;
                     }
                 }
-                Err(e) => warn!("Error reading file: {:?}", e),
+                Err(_) => has_unsupported_files = true,
             }
         }
+        if !matched {
+            has_unsupported_files = true;
+        }
+    }
+
+    if has_unsupported_files
+        || (!raw_files.is_empty() && !sketch_files.is_empty())
+        || sketch_files.len() > 1
+        || (raw_files.is_empty() && sketch_files.is_empty())
+    {
+        error!("{}", UNSUPPORTED_INPUT_MESSAGE);
+        std::process::exit(1);
     }
 
     let c = args.c.unwrap_or_else(|| {
