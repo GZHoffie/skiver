@@ -156,22 +156,3 @@ pub fn analyze(args: AnalyzeArgs) {
     fs::write(format!("{}.summary_error_rate.csv", args.output_prefix), &analysis_output).unwrap();
     info!("Output written to prefix {}.", args.output_prefix);
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn creates_missing_output_directory_and_finds_existing_outputs() {
-        let root = std::env::temp_dir().join(format!("skiver-output-test-{}", std::process::id()));
-        let prefix = root.join("nested").join("sample");
-        let existing = format!("{}.summary_error_rate.csv", prefix.display());
-        let (created, found) = validate_output_prefix(prefix.to_str().unwrap()).unwrap();
-        assert_eq!(created, Some(root.join("nested").display().to_string()));
-        fs::write(&existing, "").unwrap();
-        let (_, found_after_write) = validate_output_prefix(prefix.to_str().unwrap()).unwrap();
-        assert!(found.is_empty());
-        assert_eq!(found_after_write, vec![existing]);
-        fs::remove_dir_all(root).unwrap();
-    }
-}

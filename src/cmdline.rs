@@ -45,7 +45,7 @@ pub struct SketchArgs {
     //#[clap(short, default_value_t = 4, help_heading = "ALGORITHM", help = "Number of threads.")]
     //pub threads: usize,
 
-    #[clap(short, default_value_t = String::new(), help_heading = "OUTPUT", help = "Output file.")]
+    #[clap(short, required = true, help_heading = "OUTPUT", help = "Output file.")]
     pub output_path: String,
 
     #[clap(long, help_heading = "ALGORITHM", help = "Use the forward strand of the reads only. Default: use both forward and reverse strands of the reads.")]
