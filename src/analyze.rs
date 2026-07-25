@@ -20,7 +20,6 @@ const OUTPUT_SUFFIXES: [&str; 8] = [
     "summary_gc_content.csv",
 ];
 
-const UNSUPPORTED_INPUT_MESSAGE: &str = "The current version of skiver analyze only supports either exactly one .kvmer sketch file or one or more FASTQ files (.fastq, .fq, .fastq.gz, or .fq.gz) as input.";
 
 fn is_fastq_file(file_path: &str) -> bool {
     let lower_path = file_path.to_lowercase();
@@ -108,12 +107,14 @@ pub fn analyze(args: AnalyzeArgs) {
             match entry {
                 Ok(path) => {
                     if let Some(file_str) = path.to_str() {
+                        // FASTQ input is identified by extension. Any other input is
+                        // passed to the sketch loader, which validates its contents;
+                        // sketches are not required to use a particular extension.
                         if is_fastq_file(file_str) {
                             raw_files.push(file_str.to_string());
-                        } else if is_sketch_file(file_str) {
-                            sketch_files.push(file_str.to_string());
                         } else {
-                            has_unsupported_files = true;
+                            // we assume it's a sketch file
+                            sketch_files.push(file_str.to_string());
                         }
                     } else {
                         has_unsupported_files = true;
@@ -132,7 +133,7 @@ pub fn analyze(args: AnalyzeArgs) {
         || sketch_files.len() > 1
         || (raw_files.is_empty() && sketch_files.is_empty())
     {
-        error!("{}", UNSUPPORTED_INPUT_MESSAGE);
+        error!("{}", "The current version of skiver analyze only supports either exactly one kv-mer sketch file or one or more FASTQ files (.fastq, .fq, .fastq.gz, or .fq.gz) as input.");
         std::process::exit(1);
     }
 
