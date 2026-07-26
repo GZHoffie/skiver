@@ -22,6 +22,9 @@ Below, we explain the fields reported in each csv file.
 |Fields|Interpretation|
 |------|--------------|
 |`per_base_error_rate`|Estimated per-base error rate. In other words, the probability of a random base is erroneous. </br> This value is estimated by $\hat{\varepsilon}_{\text{perbase}}:=1-\exp(-\hat{\lambda})$.|
+|`substitution_error_proportion`|Proportion of all observed errors that are substitutions, combining reads from both directions.|
+|`insertion_error_proportion`|Proportion of all observed errors that are insertions, combining reads from both directions.|
+|`deletion_error_proportion`|Proportion of all observed errors that are deletions, combining reads from both directions. The three error proportions sum to 1 when errors are observed.|
 |`mean_hazard_rate`|Estimated mean hazard rate: $1$ minus the geometric mean of $(1-h(t))$ over $t$. This value can be used to estimate the survival rate (i.e. the chance of a k-mer being free of sequencing error) by raising this number to the power of $k$.|
 |`lambda`|Estimated $\lambda$ of the discrete Weibull distribution of the survival model. A larger $\lambda$ means a higher per-base error rate.|
 |`beta`|Estimated $\beta$ of the discrete Weibull distribution of the survival model. Smaller $\beta$ means that the errors are likely clustered together, and $\beta$ closer to 1 means that the errors are close to be randomly distributed.|

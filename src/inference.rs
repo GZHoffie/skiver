@@ -30,10 +30,48 @@ pub struct ErrorSpectrum {
 
     // error spectrum
     pub snp_rate: HashMap<(EditOperation, u8, u8), u32>,
+    /// Relative proportions of substitution, insertion, and deletion errors,
+    /// aggregated across both read directions.
+    pub error_type_proportions: (f64, f64, f64),
 
     pub bidirectional: bool,
 }
 
+fn error_type_proportions(
+    counts: &HashMap<(EditOperation, u8, u8), u32>,
+) -> (f64, f64, f64) {
+    let mut substitution = 0u64;
+    let mut insertion = 0u64;
+    let mut deletion = 0u64;
+
+    for (&(op, _, _), &count) in counts {
+        match op {
+            EditOperation::AC | EditOperation::AG | EditOperation::AT
+            | EditOperation::CA | EditOperation::CG | EditOperation::CT
+            | EditOperation::GA | EditOperation::GC | EditOperation::GT
+            | EditOperation::TA | EditOperation::TC | EditOperation::TG => {
+                substitution += count as u64;
+            }
+            EditOperation::_A | EditOperation::_C | EditOperation::_G | EditOperation::_T => {
+                insertion += count as u64;
+            }
+            EditOperation::A_ | EditOperation::C_ | EditOperation::G_ | EditOperation::T_ => {
+                deletion += count as u64;
+            }
+            EditOperation::AMBIGUOUS => {}
+        }
+    }
+
+    let total = substitution + insertion + deletion;
+    if total == 0 {
+        return (0.0, 0.0, 0.0);
+    }
+    (
+        substitution as f64 / total as f64,
+        insertion as f64 / total as f64,
+        deletion as f64 / total as f64,
+    )
+}
 
 pub enum RatioEstimationMethod {
     Slope,
@@ -804,6 +842,7 @@ impl ErrorAnalyzer {
 
         // estimate SNP rates
         let error_rates = self.estimate_error_rate(stats, &indices);
+        let error_type_proportions = error_type_proportions(&error_rates);
 
         // estimate hazard ratio parameters
         let (lambda, beta, hazard_ratio, x_sum, y_sum) = self.estimate_hazard_ratio(stats, &indices);
@@ -870,6 +909,7 @@ impl ErrorAnalyzer {
             estimated_coverage: estimated_coverage,
 
             snp_rate: error_rates,
+            error_type_proportions,
             bidirectional: !self.args.forward_only,
         }
     }
@@ -898,8 +938,11 @@ pub fn spectrum_to_str(spectrum: &ErrorSpectrum, bidirectional: bool) -> String 
     result.push_str(&format!("{},{}~{},", spectrum.key_coverage.0, (spectrum.key_coverage.1).0, (spectrum.key_coverage.1).1));
     result.push_str(&format!("{:.6},{:.6}~{:.6},", spectrum.estimated_coverage.0, (spectrum.estimated_coverage.1).0, (spectrum.estimated_coverage.1).1));
 
-    // remove the last comma
-    result.pop();
+    let (substitution, insertion, deletion) = spectrum.error_type_proportions;
+    result.push_str(&format!(
+        ",{:.6},{:.6},{:.6}",
+        substitution, insertion, deletion,
+    ));
 
     result
 }
@@ -914,7 +957,8 @@ pub fn header_str(bidirectional: bool) -> String {
     result.push_str("beta,beta_5-95th_percentile,");
 
     result.push_str("key_median_coverage,key_coverage_5-95th_percentile,");
-    result.push_str("true_median_coverage,true_coverage_5-95th_percentile");
+    result.push_str("true_median_coverage,true_coverage_5-95th_percentile,");
+    result.push_str("substitution_error_proportion,insertion_error_proportion,deletion_error_proportion");
 
     result
 }
