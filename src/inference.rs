@@ -940,7 +940,7 @@ pub fn spectrum_to_str(spectrum: &ErrorSpectrum, bidirectional: bool) -> String 
 
     let (substitution, insertion, deletion) = spectrum.error_type_proportions;
     result.push_str(&format!(
-        ",{:.6},{:.6},{:.6}",
+        "{:.6},{:.6},{:.6}",
         substitution, insertion, deletion,
     ));
 

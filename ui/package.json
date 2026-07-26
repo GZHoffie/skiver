@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "node scripts/prepare-sidecar.mjs && tauri"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.0",

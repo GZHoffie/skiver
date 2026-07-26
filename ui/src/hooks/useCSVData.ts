@@ -24,6 +24,15 @@ export function useCSVData<T>(path: string | null): {
           dynamicTyping: true,
           skipEmptyLines: true,
         });
+        if (result.errors.length > 0) {
+          const details = result.errors
+            .map((parseError) => {
+              const row = parseError.row === undefined ? "" : ` on row ${parseError.row + 2}`;
+              return `${parseError.message}${row}`;
+            })
+            .join("; ");
+          throw new Error(`Invalid CSV data: ${details}`);
+        }
         setData(result.data);
       })
       .catch((e) => setError(String(e)))
