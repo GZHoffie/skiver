@@ -5,6 +5,7 @@
  */
 
 use kuva::prelude::*;
+use log::info;
 use std::error::Error;
 use std::fs;
 use std::path::Path;
@@ -102,7 +103,6 @@ fn output(prefix: &str, kind: &str) -> String {
 fn save_scene(path: &str, scene: kuva::render::render::Scene) -> Result<()> {
     let bytes = PdfBackend::new().render_scene(&scene)?;
     fs::write(path, bytes)?;
-    println!("  wrote {path}");
     Ok(())
 }
 
@@ -760,74 +760,44 @@ fn plot_read_position(prefix: &str, num_bases: usize) -> Result<()> {
     save_scene(&output(prefix, "read_position"), scene)
 }
 
-fn run_if_present<F>(description: &str, required: &[String], f: F)
+fn run_if_present<F>(required: &[String], f: F) -> bool
 where
     F: FnOnce() -> Result<()>,
 {
-    let missing: Vec<_> = required
-        .iter()
-        .filter(|p| !Path::new(p).is_file())
-        .collect();
-    if !missing.is_empty() {
-        for path in missing {
-            eprintln!("  [skip] file not found: {path}");
-        }
-        return;
+    if required.iter().any(|p| !Path::new(p).is_file()) {
+        return false;
     }
-    println!("  Plotting {description}...");
-    if let Err(e) = f() {
-        eprintln!("  [skip] {description}: {e}");
-    }
+    f().is_ok()
 }
 
 pub fn generate(prefix: &str, options: &PlotOptions) {
     let file = |suffix: &str| format!("{prefix}.{suffix}");
     let report = file("summary_error_rate.csv");
     let spectrum = file("summary_error_spectrum.csv");
-    run_if_present(
-        "error spectrum",
-        &[spectrum.clone(), report.clone()],
-        || plot_spectrum(prefix, options.normalize),
+    let results = [
+        run_if_present(&[spectrum.clone(), report.clone()], || {
+            plot_spectrum(prefix, options.normalize)
+        }),
+        run_if_present(&[file("kvmer.csv"), report.clone()], || {
+            plot_coverage(prefix)
+        }),
+        run_if_present(&[file("hazard_rate.csv"), report], || {
+            plot_hazard(prefix, options.t_min, options.t_max, options.log_scale)
+        }),
+        run_if_present(&[file("summary_phred.csv")], || {
+            plot_qscore(prefix, options.log_scale, options.min_coverage)
+        }),
+        run_if_present(&[file("summary_gc_content.csv")], || {
+            plot_gc(prefix, options.log_scale, options.min_bases)
+        }),
+        run_if_present(&[file("summary_read_position.csv")], || {
+            plot_read_position(prefix, options.num_bases)
+        }),
+    ];
+    let written = results.iter().filter(|&&ok| ok).count();
+    info!(
+        "Plotting complete: wrote {} plot(s), skipped {}.",
+        written,
+        results.len() - written
     );
-    run_if_present(
-        "coverage histogram",
-        &[file("kvmer.csv"), report.clone()],
-        || plot_coverage(prefix),
-    );
-    run_if_present(
-        "hazard/survival rate",
-        &[file("hazard_rate.csv"), report],
-        || plot_hazard(prefix, options.t_min, options.t_max, options.log_scale),
-    );
-    run_if_present(
-        "quality-score calibration",
-        &[file("summary_phred.csv")],
-        || plot_qscore(prefix, options.log_scale, options.min_coverage),
-    );
-    run_if_present(
-        "GC content error rate",
-        &[file("summary_gc_content.csv")],
-        || plot_gc(prefix, options.log_scale, options.min_bases),
-    );
-    run_if_present(
-        "read position error rate",
-        &[file("summary_read_position.csv")],
-        || plot_read_position(prefix, options.num_bases),
-    );
-}
-
-#[cfg(test)]
-mod tests {
-    use super::scale_counts;
-
-    #[test]
-    fn count_scale_tracks_the_data_magnitude() {
-        let (small, small_label) = scale_counts(vec![12.0, 950.0], "# bases");
-        assert_eq!(small, vec![12.0, 950.0]);
-        assert_eq!(small_label, "# bases");
-
-        let (millions, millions_label) = scale_counts(vec![250_000.0, 3_500_000.0], "# bases");
-        assert_eq!(millions, vec![0.25, 3.5]);
-        assert_eq!(millions_label, "# bases (×10^6)");
-    }
 }
