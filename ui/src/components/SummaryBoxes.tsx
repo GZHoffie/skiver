@@ -14,6 +14,9 @@ interface ErrorRateRow {
   "key_coverage_5-95th_percentile": string;
   true_median_coverage: number;
   "true_coverage_5-95th_percentile": string;
+  substitution_error_proportion: number;
+  insertion_error_proportion: number;
+  deletion_error_proportion: number;
 }
 
 interface Props {

@@ -203,6 +203,7 @@ export default function App() {
               <HazardSurvivalPlot
                 hazardPath={csvPaths.hazardRate}
                 errorRatePath={csvPaths.summaryErrorRate}
+                survivalPath={csvPaths.survivalRate}
               />
             )}
             {plotTab === "Error Spectrum" && (

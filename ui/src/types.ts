@@ -37,6 +37,7 @@ export interface CsvPaths {
   summaryErrorRate: string;
   kvmer: string;
   hazardRate: string;
+  survivalRate: string;
   summaryErrorSpectrum: string;
   summaryErrorSpectrumDepT: string;
   summaryPhred: string;

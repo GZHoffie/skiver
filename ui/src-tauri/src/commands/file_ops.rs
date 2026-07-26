@@ -5,10 +5,6 @@ pub async fn pick_input_files(app: tauri::AppHandle) -> Result<Vec<String>, Stri
     let paths = app
         .dialog()
         .file()
-        .add_filter(
-            "Sequence files",
-            &["fastq", "fasta", "fa", "fq", "gz", "kvmer"],
-        )
         .blocking_pick_files()
         .ok_or("No files selected")?;
     Ok(paths

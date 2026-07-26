@@ -13,17 +13,24 @@ interface ErrorRateRow {
   beta: number;
 }
 
+interface SurvivalRow {
+  t: number;
+  survival_rate: number;
+}
+
 interface Props {
   hazardPath: string;
   errorRatePath: string;
+  survivalPath: string;
 }
 
-export function HazardSurvivalPlot({ hazardPath, errorRatePath }: Props) {
+export function HazardSurvivalPlot({ hazardPath, errorRatePath, survivalPath }: Props) {
   const { data: hazard, loading: hLoading } = useCSVData<HazardRow>(hazardPath);
   const { data: rates, loading: rLoading } = useCSVData<ErrorRateRow>(errorRatePath);
+  const { data: survivalRows, loading: sLoading } = useCSVData<SurvivalRow>(survivalPath);
 
-  if (hLoading || rLoading) return <div className="plot-loading">Loading…</div>;
-  if (!hazard || !rates || rates.length === 0) return null;
+  if (hLoading || rLoading || sLoading) return <div className="plot-loading">Loading…</div>;
+  if (!hazard || !rates || rates.length === 0 || !survivalRows || survivalRows.length === 0) return null;
 
   const { lambda, beta } = rates[0];
   const t = hazard.map((r) => r.t);
@@ -34,10 +41,8 @@ export function HazardSurvivalPlot({ hazardPath, errorRatePath }: Props) {
   const fittedHazard = t.map(
     (ti) => 1 - Math.exp(-lambda * (Math.pow(ti, beta) - Math.pow(ti - 1, beta)))
   );
-
-  // Survival curve
-  const tSurv = Array.from({ length: 100 }, (_, i) => i + 1);
-  const survival = tSurv.map((ti) => Math.exp(-lambda * Math.pow(ti, beta)));
+  const tSurv = survivalRows.map((row) => row.t);
+  const survival = survivalRows.map((row) => row.survival_rate);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const hazardTraces: any[] = [
