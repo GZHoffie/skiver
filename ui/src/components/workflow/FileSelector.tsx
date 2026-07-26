@@ -33,7 +33,7 @@ export function FileSelector({ files, onChange, disabled, error }: Props) {
     <div className={`section${error ? " error" : ""}`}>
       <h3>Input Files</h3>
       <p className="hint">
-        One pre-computed sketch (any extension), or FASTA/FASTQ/BAM files and glob patterns
+        One pre-computed (<i>k</i>, <i>v</i>)-mer sketch, or FASTQ(.gz) files and glob patterns
       </p>
       <div style={{ display: "flex", gap: "8px" }}>
         <input
