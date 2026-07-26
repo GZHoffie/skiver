@@ -9,7 +9,7 @@ use glob::glob;
 use std::fs::{self, OpenOptions};
 use std::path::Path;
 
-const OUTPUT_SUFFIXES: [&str; 8] = [
+const OUTPUT_SUFFIXES: [&str; 14] = [
     "hazard_rate.csv",
     "kvmer.csv",
     "summary_error_rate.csv",
@@ -18,6 +18,12 @@ const OUTPUT_SUFFIXES: [&str; 8] = [
     "summary_read_position.csv",
     "summary_phred.csv",
     "summary_gc_content.csv",
+    "plot_spectrum.pdf",
+    "plot_coverage.pdf",
+    "plot_hazard_survival.pdf",
+    "plot_qscore_calibration.pdf",
+    "plot_gc_content.pdf",
+    "plot_read_position.pdf",
 ];
 
 
@@ -187,5 +193,7 @@ pub fn analyze(args: AnalyzeArgs) {
     let analysis_output = format!("{}\n{}", header_str(!args.forward_only), spectrum_to_str(&spectrum, !args.forward_only));
 
     fs::write(format!("{}.summary_error_rate.csv", args.output_prefix), &analysis_output).unwrap();
+    info!("Generating plots...");
+    crate::plot::generate(&args.output_prefix, &crate::plot::PlotOptions::default());
     info!("Output written to prefix {}.", args.output_prefix);
 }

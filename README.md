@@ -97,6 +97,9 @@ python scripts/plot_all.py example/SRR7498042 -o figures/SRR7498042
 
 This creates the verbose output in [`example/SRR7498042.*.csv`](example/), and visualize the output in [`figures/SRR7498042_*.png`](figures/).
 
+`skiver analyze` also generates six summary figures as vector PDFs using
+the Rust [`kuva` package](https://github.com/Psy-Fer/kuva). It writes `example/SRR7498042.plot_*.pdf` files alongside the CSV reports.
+
 Apart from `plot_all.py`, you can also use the individual scripts and adjust the parameters like the following.
 
 - **Visualizing hazard rate and survival rate estimates**
