@@ -1,10 +1,11 @@
 # Interpreting skiver reports
 
-After running `skiver analyze`, it produces 6 files with the specified prefix,
+After running `skiver analyze`, it produces the following files with the specified prefix:
 
 |File name|Content|
 |---------|-------|
 |`[prefix].summary_error_rate.csv`|Estimated error rate and coverage|
+|`[prefix].survival_rate.csv`|Estimated survival rate from *t* = 1 through 100|
 |`[prefix].kvmer.csv`|Info of the sketched (*k*, *v*)-mers|
 |`[prefix].hazard_rate.csv`|Estimated hazard rate at different *t*|
 |`[prefix].summary_error_spectrum.csv`|Frequency of each error type|
@@ -32,6 +33,13 @@ Below, we explain the fields reported in each csv file.
 |`true_median_coverage`|Estimated true coverage of the keys (if they are free of sequencing errors) of the sketched $(k,v)$-mers that passes the outlier filter. The true coverage is estimated by taking the observed median coverage above, and divide by $\hat{S}(k)=\exp(-\hat{\lambda} k^{-\hat{\beta}})$.|
 
 Each value is paired with a `5-95th_percentile` confidence interval, which is estimated using bootstrapping experiments.
+
+### `[prefix].survival_rate.csv`
+
+This file reports `t` and the estimated survival rate
+$S(t)=\exp(-\hat{\lambda}t^{\hat{\beta}})$ for every integer *t* from 1 through 100.
+The fitted $\hat{\lambda}$ and $\hat{\beta}$ values come from
+`[prefix].summary_error_rate.csv`.
 
 ### `[prefix].kvmer.csv`
 

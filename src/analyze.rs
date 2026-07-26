@@ -9,10 +9,11 @@ use glob::glob;
 use std::fs::{self, OpenOptions};
 use std::path::Path;
 
-const OUTPUT_SUFFIXES: [&str; 14] = [
+const OUTPUT_SUFFIXES: [&str; 15] = [
     "hazard_rate.csv",
     "kvmer.csv",
     "summary_error_rate.csv",
+    "survival_rate.csv",
     "summary_error_spectrum.csv",
     "summary_error_spectrum_dependence_on_t.csv",
     "summary_read_position.csv",
@@ -26,6 +27,14 @@ const OUTPUT_SUFFIXES: [&str; 14] = [
     "plot_read_position.pdf",
 ];
 
+fn survival_rate_to_csv(lambda: f32, beta: f32) -> String {
+    let mut result = String::from("t,survival_rate\n");
+    for t in 1..=100 {
+        let survival_rate = (-(lambda as f64) * (t as f64).powf(beta as f64)).exp();
+        result.push_str(&format!("{},{:.6}\n", t, survival_rate));
+    }
+    result
+}
 
 fn is_fastq_file(file_path: &str) -> bool {
     let lower_path = file_path.to_lowercase();
@@ -193,6 +202,10 @@ pub fn analyze(args: AnalyzeArgs) {
     let analysis_output = format!("{}\n{}", header_str(!args.forward_only), spectrum_to_str(&spectrum, !args.forward_only));
 
     fs::write(format!("{}.summary_error_rate.csv", args.output_prefix), &analysis_output).unwrap();
+    fs::write(
+        format!("{}.survival_rate.csv", args.output_prefix),
+        survival_rate_to_csv(spectrum.estimated_lambda.0, spectrum.estimated_beta.0),
+    ).unwrap();
     crate::plot::generate(&args.output_prefix, &crate::plot::PlotOptions::default());
     info!("Output written to prefix {}.", args.output_prefix);
 }
