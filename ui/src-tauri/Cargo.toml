@@ -1,6 +1,6 @@
 [package]
 name = "ui"
-version = "0.1.0"
+version = "0.3.0"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -25,4 +25,3 @@ serde_json = "1"
 tauri-plugin-shell = "2.3.5"
 tauri-plugin-dialog = "2.6.0"
 tokio = { version = "1.50.0", features = ["full"] }
-

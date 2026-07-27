@@ -3,14 +3,102 @@ use crate::utils::*;
 use crate::inference::*;
 use crate::cmdline::AnalyzeArgs;
 
-use clap::error;
 use simple_logger::SimpleLogger;
 use log::{info, warn, error};
 use glob::glob;
-use std::fs;
+use std::fs::{self, OpenOptions};
+use std::path::Path;
+
+const OUTPUT_SUFFIXES: [&str; 15] = [
+    "hazard_rate.csv",
+    "kvmer.csv",
+    "summary_error_rate.csv",
+    "survival_rate.csv",
+    "summary_error_spectrum.csv",
+    "summary_error_spectrum_dependence_on_t.csv",
+    "summary_read_position.csv",
+    "summary_phred.csv",
+    "summary_gc_content.csv",
+    "plot_spectrum.pdf",
+    "plot_coverage.pdf",
+    "plot_hazard_survival.pdf",
+    "plot_qscore_calibration.pdf",
+    "plot_gc_content.pdf",
+    "plot_read_position.pdf",
+];
+
+fn survival_rate_to_csv(lambda: f32, beta: f32) -> String {
+    let mut result = String::from("t,survival_rate\n");
+    for t in 1..=100 {
+        let survival_rate = (-(lambda as f64) * (t as f64).powf(beta as f64)).exp();
+        result.push_str(&format!("{},{:.6}\n", t, survival_rate));
+    }
+    result
+}
+
+fn is_fastq_file(file_path: &str) -> bool {
+    let lower_path = file_path.to_lowercase();
+    [".fastq", ".fq", ".fastq.gz", ".fq.gz"].iter().any(|ext| lower_path.ends_with(ext))
+}
+
+fn validate_output_prefix(prefix: &str) -> Result<(Option<String>, Vec<String>), String> {
+    if prefix.is_empty() {
+        return Err("Output prefix cannot be empty.".to_string());
+    }
+
+    let prefix_path = Path::new(prefix);
+    let file_name = prefix_path.file_name()
+        .ok_or_else(|| format!("Output prefix '{}' does not contain a file name.", prefix))?;
+    if file_name.is_empty() {
+        return Err(format!("Output prefix '{}' does not contain a file name.", prefix));
+    }
+
+    let parent = prefix_path.parent().filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    let created_dir = if !parent.exists() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("Could not create output directory '{}': {}", parent.display(), e))?;
+        Some(parent.display().to_string())
+    } else {
+        if !parent.is_dir() {
+            return Err(format!("Output directory '{}' is not a directory.", parent.display()));
+        }
+        None
+    };
+
+    let probe = parent.join(format!(".skiver-write-test-{}", std::process::id()));
+    OpenOptions::new().write(true).create_new(true).open(&probe)
+        .map_err(|e| format!("Output prefix '{}' is not writable: {}", prefix, e))?;
+    fs::remove_file(&probe)
+        .map_err(|e| format!("Could not remove output validation file '{}': {}", probe.display(), e))?;
+
+    let existing = OUTPUT_SUFFIXES.iter()
+        .map(|suffix| format!("{}.{}", prefix, suffix))
+        .filter(|path| Path::new(path).exists())
+        .collect();
+    Ok((created_dir, existing))
+}
 
 pub fn analyze(args: AnalyzeArgs) {
     SimpleLogger::new().with_level(log::LevelFilter::Info).init().unwrap();
+
+    let (created_dir, existing_outputs) = match validate_output_prefix(&args.output_prefix) {
+        Ok(result) => result,
+        Err(message) => {
+            error!("{}", message);
+            std::process::exit(1);
+        }
+    };
+    if let Some(directory) = created_dir {
+        info!("Created output directory '{}'.", directory);
+    }
+    if !existing_outputs.is_empty() {
+        warn!(
+            "Output files with prefix '{}' already exist and will be overwritten.",
+            args.output_prefix
+        );
+    }
+
     // [TODO] Multithreaded version is under development.
     //rayon::ThreadPoolBuilder::new().num_threads(args.threads).build_global().unwrap();
 
@@ -19,22 +107,49 @@ pub fn analyze(args: AnalyzeArgs) {
     // Expand globs and categorize files before processing so we can auto-determine -c
     let mut raw_files: Vec<String> = Vec::new();
     let mut sketch_files: Vec<String> = Vec::new();
+    let mut has_unsupported_files = false;
     for file in &args.files {
-        for entry in glob(file).expect("Failed to read glob pattern") {
+        let entries = match glob(file) {
+            Ok(entries) => entries,
+            Err(_) => {
+                has_unsupported_files = true;
+                continue;
+            }
+        };
+        let mut matched = false;
+        for entry in entries {
+            matched = true;
             match entry {
                 Ok(path) => {
-                    let file_str = path.to_str().unwrap().to_string();
-                    if is_fastx_file(&file_str) {
-                        raw_files.push(file_str);
-                    } else if is_sketch_file(&file_str) {
-                        sketch_files.push(file_str);
+                    if let Some(file_str) = path.to_str() {
+                        // FASTQ input is identified by extension. Any other input is
+                        // passed to the sketch loader, which validates its contents;
+                        // sketches are not required to use a particular extension.
+                        if is_fastq_file(file_str) {
+                            raw_files.push(file_str.to_string());
+                        } else {
+                            // we assume it's a sketch file
+                            sketch_files.push(file_str.to_string());
+                        }
                     } else {
-                        warn!("File format not recognized for file: {}. Skipping.", file_str);
+                        has_unsupported_files = true;
                     }
                 }
-                Err(e) => warn!("Error reading file: {:?}", e),
+                Err(_) => has_unsupported_files = true,
             }
         }
+        if !matched {
+            has_unsupported_files = true;
+        }
+    }
+
+    if has_unsupported_files
+        || (!raw_files.is_empty() && !sketch_files.is_empty())
+        || sketch_files.len() > 1
+        || (raw_files.is_empty() && sketch_files.is_empty())
+    {
+        error!("{}", "The current version of skiver analyze only supports either exactly one kv-mer sketch file or one or more FASTQ files (.fastq, .fq, .fastq.gz, or .fq.gz) as input.");
+        std::process::exit(1);
     }
 
     let c = args.c.unwrap_or_else(|| {
@@ -86,10 +201,11 @@ pub fn analyze(args: AnalyzeArgs) {
     let spectrum = analyzer.analyze(&stats);
     let analysis_output = format!("{}\n{}", header_str(!args.forward_only), spectrum_to_str(&spectrum, !args.forward_only));
 
-    if let Some(prefix) = &args.output_prefix {
-        fs::write(format!("{}.summary_error_rate.csv", prefix), &analysis_output).unwrap();
-        info!("Output written to prefix {}.", prefix);
-    } else {
-        error!("No output prefix provided. Use -o or --output-prefix to specify the output file prefix for the analysis results.");
-    }
+    fs::write(format!("{}.summary_error_rate.csv", args.output_prefix), &analysis_output).unwrap();
+    fs::write(
+        format!("{}.survival_rate.csv", args.output_prefix),
+        survival_rate_to_csv(spectrum.estimated_lambda.0, spectrum.estimated_beta.0),
+    ).unwrap();
+    crate::plot::generate(&args.output_prefix, &crate::plot::PlotOptions::default());
+    info!("Output written to prefix {}.", args.output_prefix);
 }

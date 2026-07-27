@@ -45,7 +45,7 @@ pub struct SketchArgs {
     //#[clap(short, default_value_t = 4, help_heading = "ALGORITHM", help = "Number of threads.")]
     //pub threads: usize,
 
-    #[clap(short, default_value_t = String::new(), help_heading = "OUTPUT", help = "Output file.")]
+    #[clap(short, required = true, help_heading = "OUTPUT", help = "Output file.")]
     pub output_path: String,
 
     #[clap(long, help_heading = "ALGORITHM", help = "Use the forward strand of the reads only. Default: use both forward and reverse strands of the reads.")]
@@ -55,7 +55,7 @@ pub struct SketchArgs {
 
 #[derive(Args, Default, Clone)]
 pub struct AnalyzeArgs {
-    #[clap(multiple=true, help_heading = "INPUT", help = "fasta/fastq files; gzip optional.")]
+    #[clap(multiple=true, help_heading = "INPUT", help = "Exactly one kv-mer sketch (any file extension), or one or more FASTQ files; gzip optional.")]
     pub files: Vec<String>,
 
     #[clap(short = 'k', default_value_t = 17, help_heading = "ALGORITHM", help ="Length of keys.")]
@@ -100,8 +100,8 @@ pub struct AnalyzeArgs {
     //#[clap(short = 't', long = "threads", default_value_t = 4, help_heading = "ALGORITHM", help = "Number of threads.")]
     //pub threads: usize,
 
-    #[clap(short = 'o', long = "output-prefix", help_heading = "OUTPUT", help = "Output prefix. When set, writes the report to <prefix>.*.csv.")]
-    pub output_prefix: Option<String>,
+    #[clap(short = 'o', long = "output-prefix", required = true, help_heading = "OUTPUT", help = "Output prefix. Writes the report to <prefix>.*.csv.")]
+    pub output_prefix: String,
 
     #[clap(long, default_value_t = String::from("sum_ratio"), hidden = true, help = "One of 'slope', 'linear_fit', 'ratio_mean', 'sum_ratio'.")]
     pub estimation_method: String,
@@ -149,4 +149,3 @@ pub struct MapArgs {
     #[clap(short, help_heading = "OUTPUT", help = "Verbose output per-read k-mer hit information to stdout.")]
     pub print_verbose: bool,
 }
-

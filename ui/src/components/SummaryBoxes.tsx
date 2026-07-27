@@ -14,6 +14,9 @@ interface ErrorRateRow {
   "key_coverage_5-95th_percentile": string;
   true_median_coverage: number;
   "true_coverage_5-95th_percentile": string;
+  substitution_error_proportion: number;
+  insertion_error_proportion: number;
+  deletion_error_proportion: number;
 }
 
 interface Props {
@@ -73,9 +76,10 @@ function Box({
 }
 
 export function SummaryBoxes({ errorRatePath }: Props) {
-  const { data, loading } = useCSVData<ErrorRateRow>(errorRatePath);
+  const { data, loading, error } = useCSVData<ErrorRateRow>(errorRatePath);
 
   if (loading) return <div className="summary-boxes-loading">Loading summary…</div>;
+  if (error) return <div className="error-banner">Could not read summary: {error}</div>;
   if (!data || data.length === 0) return null;
 
   const r = data[0];

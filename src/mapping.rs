@@ -1,7 +1,7 @@
 use simple_logger::SimpleLogger;
 use log::{info, warn};
 use needletail::parse_fastx_file;
-#[cfg(feature = "bam")]
+#[cfg(all(feature = "bam", not(target_os = "windows")))]
 use rust_htslib::{bam, bam::Read as BamRead};
 use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
@@ -105,7 +105,7 @@ impl KmerSet {
         trim_back: usize,
     ) {
         // Handle SAM/BAM files
-        #[cfg(feature = "bam")]
+        #[cfg(all(feature = "bam", not(target_os = "windows")))]
         if seq_file.ends_with(".bam") || seq_file.ends_with(".sam") {
             match bam::Reader::from_path(seq_file) {
                 Ok(mut reader) => {
@@ -126,7 +126,7 @@ impl KmerSet {
             }
             return;
         }
-        #[cfg(not(feature = "bam"))]
+        #[cfg(any(not(feature = "bam"), target_os = "windows"))]
         if seq_file.ends_with(".bam") || seq_file.ends_with(".sam") {
             warn!("BAM/SAM support is not enabled in this build; skipping {}.", seq_file);
             return;
@@ -178,7 +178,7 @@ impl KmerSet {
         }
 
         // Handle SAM/BAM files
-        #[cfg(feature = "bam")]
+        #[cfg(all(feature = "bam", not(target_os = "windows")))]
         if seq_file.ends_with(".bam") || seq_file.ends_with(".sam") {
             match bam::Reader::from_path(seq_file) {
                 Ok(mut reader) => {
@@ -211,7 +211,7 @@ impl KmerSet {
             }
             return (matched_kmers, total_kmers);
         }
-        #[cfg(not(feature = "bam"))]
+        #[cfg(any(not(feature = "bam"), target_os = "windows"))]
         if seq_file.ends_with(".bam") || seq_file.ends_with(".sam") {
             warn!("BAM/SAM support is not enabled in this build; skipping {}.", seq_file);
             return (matched_kmers, total_kmers);

@@ -21,8 +21,13 @@ export function useSkiverRun() {
     setLogs((prev) => [...prev, entry]);
   }, []);
 
-  function hasKvmerInput(files: string[]): boolean {
-    return files.some((path) => path.toLowerCase().endsWith(".kvmer"));
+  function isSequenceInput(path: string): boolean {
+    const lower = path.toLowerCase();
+    return [
+      ".fa", ".fna", ".fasta", ".fa.gz", ".fna.gz", ".fasta.gz",
+      ".fq", ".fnq", ".fastq", ".fq.gz", ".fnq.gz", ".fastq.gz",
+      ".bam",
+    ].some((extension) => lower.endsWith(extension));
   }
 
   const run = useCallback(
@@ -31,14 +36,29 @@ export function useSkiverRun() {
       setCsvPaths(null);
       setErrorMessage(null);
 
-      const analyzeInputFiles = hasKvmerInput(sketchParams.input_files)
-        ? sketchParams.input_files
-        : analyzeParams.input_files;
+      const sequenceInputs = sketchParams.input_files.filter(isSequenceInput);
+      const sketchInputs = sketchParams.input_files.filter(
+        (path) => !isSequenceInput(path)
+      );
+      if (
+        sketchInputs.length > 1 ||
+        (sketchInputs.length === 1 && sequenceInputs.length > 0)
+      ) {
+        setErrorMessage(
+          "Choose either exactly one pre-computed sketch file or one or more FASTA/FASTQ/BAM files."
+        );
+        setPhase("error");
+        return;
+      }
+
+      const shouldRunSketch = sketchInputs.length === 0;
+      const analyzeInputFiles = shouldRunSketch
+        ? analyzeParams.input_files
+        : sketchInputs;
       const effectiveAnalyzeParams: AnalyzeParams = {
         ...analyzeParams,
         input_files: analyzeInputFiles,
       };
-      const shouldRunSketch = !hasKvmerInput(sketchParams.input_files);
       const sketchChanged =
         !lastSketchRef.current ||
         JSON.stringify(sketchParams) !== JSON.stringify(lastSketchRef.current);
@@ -52,7 +72,7 @@ export function useSkiverRun() {
       try {
         // --- Sketch ---
         if (!shouldRunSketch) {
-          appendLog({ stream: "stdout", line: "=== skiver sketch (skipped — .kvmer input provided) ===" });
+          appendLog({ stream: "stdout", line: "=== skiver sketch (skipped — pre-computed sketch provided) ===" });
         } else if (sketchChanged) {
           setPhase("sketching");
           appendLog({ stream: "stdout", line: "=== skiver sketch ===" });
@@ -73,6 +93,7 @@ export function useSkiverRun() {
           summaryErrorRate: `${prefix}.summary_error_rate.csv`,
           kvmer: `${prefix}.kvmer.csv`,
           hazardRate: `${prefix}.hazard_rate.csv`,
+          survivalRate: `${prefix}.survival_rate.csv`,
           summaryErrorSpectrum: `${prefix}.summary_error_spectrum.csv`,
           summaryErrorSpectrumDepT: `${prefix}.summary_error_spectrum_dependence_on_t.csv`,
           summaryPhred: `${prefix}.summary_phred.csv`,

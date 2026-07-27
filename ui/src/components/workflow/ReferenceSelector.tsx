@@ -19,7 +19,7 @@ export function ReferenceSelector({ reference, onChange, disabled }: Props) {
   return (
     <div className="section">
       <h3>Reference File (optional)</h3>
-      <p className="hint">FASTA/FASTA.gz reference genome. Supports glob patterns.</p>
+      <p className="hint">FASTA(.gz) reference genome. Supports glob patterns.</p>
       <div style={{ display: "flex", gap: "8px" }}>
         <input
           type="text"

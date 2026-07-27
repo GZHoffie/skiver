@@ -1,6 +1,6 @@
 use log::{info, warn, error};
 use needletail::parse_fastx_file;
-#[cfg(feature = "bam")]
+#[cfg(all(feature = "bam", not(target_os = "windows")))]
 use rust_htslib::{bam, bam::Read as BamRead};
 use serde::{Serialize, Deserialize};
 //use rayon::prelude::*;
@@ -137,7 +137,7 @@ impl KVmerSet {
     ) {
         let seq_file_clone = seq_file.to_string();
 
-        #[cfg(feature = "bam")]
+        #[cfg(all(feature = "bam", not(target_os = "windows")))]
         if seq_file_clone.ends_with(".bam") || seq_file_clone.ends_with(".sam") {
             match bam::Reader::from_path(&seq_file_clone) {
                 Ok(mut reader) => {
@@ -165,7 +165,7 @@ impl KVmerSet {
             return;
         }
 
-        #[cfg(not(feature = "bam"))]
+        #[cfg(any(not(feature = "bam"), target_os = "windows"))]
         if seq_file_clone.ends_with(".bam") || seq_file_clone.ends_with(".sam") {
             error!("BAM/SAM support is not enabled in this build; skipping {}.", seq_file_clone);
             return;

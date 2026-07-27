@@ -8,6 +8,7 @@ pub mod utils;
 pub mod sketch;
 pub mod constants;
 pub mod mapping;
+pub mod plot;
 pub mod huber;
 pub mod summary;
 

@@ -115,12 +115,6 @@ pub fn is_fastx_file(file_path: &str) -> bool {
     fastx_extensions.iter().any(|ext| lower_path.ends_with(ext))
 }
 
-pub fn is_sketch_file(file_path: &str) -> bool {
-    // Check if a file is a kv-mer sketch file based on its extension
-    let lower_path = file_path.to_lowercase();
-    lower_path.ends_with(".kvmer")
-}
-
 /**
  * Estimate a suitable subsampling rate `-c` from raw sequencing input files.
  * For .gz files, the decompressed size is estimated as 4x the compressed size.
