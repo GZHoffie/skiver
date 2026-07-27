@@ -107,12 +107,13 @@ pub fn analyze(args: AnalyzeArgs) {
     // Expand globs and categorize files before processing so we can auto-determine -c
     let mut raw_files: Vec<String> = Vec::new();
     let mut sketch_files: Vec<String> = Vec::new();
-    let mut has_unsupported_files = false;
+    let mut has_invalid_files = false;
     for file in &args.files {
         let entries = match glob(file) {
             Ok(entries) => entries,
             Err(_) => {
-                has_unsupported_files = true;
+                error!("{} is not a valid fasta/fastq file; skipping.", file);
+                has_invalid_files = true;
                 continue;
             }
         };
@@ -132,23 +133,32 @@ pub fn analyze(args: AnalyzeArgs) {
                             sketch_files.push(file_str.to_string());
                         }
                     } else {
-                        has_unsupported_files = true;
+                        error!("{} is not a valid fasta/fastq file; skipping.", path.display());
+                        has_invalid_files = true;
                     }
                 }
-                Err(_) => has_unsupported_files = true,
+                Err(e) => {
+                    error!("{} is not a valid fasta/fastq file; skipping.", e.path().display());
+                    has_invalid_files = true;
+                }
             }
         }
         if !matched {
-            has_unsupported_files = true;
+            error!("{} is not a valid fasta/fastq file; skipping.", file);
+            has_invalid_files = true;
         }
     }
 
-    if has_unsupported_files
-        || (!raw_files.is_empty() && !sketch_files.is_empty())
+    if (!raw_files.is_empty() && !sketch_files.is_empty())
         || sketch_files.len() > 1
-        || (raw_files.is_empty() && sketch_files.is_empty())
     {
         error!("{}", "The current version of skiver analyze only supports either exactly one kv-mer sketch file or one or more FASTQ files (.fastq, .fq, .fastq.gz, or .fq.gz) as input.");
+        std::process::exit(1);
+    }
+    if raw_files.is_empty() && sketch_files.is_empty() {
+        if !has_invalid_files {
+            error!("{}", "The current version of skiver analyze only supports either exactly one kv-mer sketch file or one or more FASTQ files (.fastq, .fq, .fastq.gz, or .fq.gz) as input.");
+        }
         std::process::exit(1);
     }
 
