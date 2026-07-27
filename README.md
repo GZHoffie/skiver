@@ -14,7 +14,7 @@ Skiver is a tool that aims to perform quality control for a set of reads, estima
 Simply download the executable from the latest release, via the following
 
 ```bash
-wget https://github.com/GZHoffie/skiver/releases/download/v0.2.2/skiver
+wget https://github.com/GZHoffie/skiver/releases/latest/download/skiver
 chmod +x ./skiver
 ./skiver
 ```
@@ -44,7 +44,8 @@ skiver analyze sequences.kvmer -o output_prefix
 skiver analyze [sequence_file_1] [sequence_file_2] ... -o output_prefix
 
 # If a reference genome is provided
-skiver analyze [sequence_file_1] [sequence_file_2] ... -r [reference_file] -o output_prefix
+# Add `--use-all` to disable the iterative outlier filter
+skiver analyze [sequence_file_1] [sequence_file_2] ... -r [reference_file] --use-all -o output_prefix
 ```
 
 The input sequence files can be represented using regex. Gzipped files are also accepted.
@@ -59,7 +60,7 @@ skiver analyze -h
 
 ## `skiver` App
 
-We provide an all-in-one app for analyzing and visualizing the information in sequencing datasets.
+We provide an all-in-one app for analyzing and visualizing the information in sequencing datasets. Please refer to [this guide](./docs/install_skiver_app.md) for detailed steps to run the app on your system.
 
 <p align="center">
   <img src="figures/skiver-app/skiver_app_main_menu.png" width="90%" />
