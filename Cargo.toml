@@ -2,6 +2,7 @@
 name = "skiver"
 version = "0.3.0"
 edition = "2024"
+license = "MIT"
 
 [features]
 default = ["bam"]
