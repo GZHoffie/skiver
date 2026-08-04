@@ -9,6 +9,14 @@ Skiver is a tool that aims to perform quality control for a set of reads, estima
 
 ## Installation
 
+We provide several ways of installing skiver CLI.
+
+### Conda install
+
+```bash
+conda install -c bioconda skiver
+```
+
 ### Download executable
 
 Simply download the executable from the latest release, via the following
