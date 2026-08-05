@@ -85,7 +85,10 @@ export function useSkiverRun() {
         // --- Analyze ---
         setPhase("analyzing");
         appendLog({ stream: "stdout", line: "=== skiver analyze ===" });
-        await invoke("run_analyze", { params: effectiveAnalyzeParams });
+        const analyzeResult = await invoke<{ has_qscore_data: boolean }>(
+          "run_analyze",
+          { params: effectiveAnalyzeParams }
+        );
 
         // Build CSV paths
         const prefix = effectiveAnalyzeParams.output_prefix;
@@ -96,7 +99,9 @@ export function useSkiverRun() {
           survivalRate: `${prefix}.survival_rate.csv`,
           summaryErrorSpectrum: `${prefix}.summary_error_spectrum.csv`,
           summaryErrorSpectrumDepT: `${prefix}.summary_error_spectrum_dependence_on_t.csv`,
-          summaryPhred: `${prefix}.summary_phred.csv`,
+          summaryPhred: analyzeResult.has_qscore_data
+            ? `${prefix}.summary_phred.csv`
+            : null,
           summaryGcContent: `${prefix}.summary_gc_content.csv`,
           summaryReadPosition: `${prefix}.summary_read_position.csv`,
         };

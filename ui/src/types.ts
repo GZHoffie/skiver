@@ -40,7 +40,7 @@ export interface CsvPaths {
   survivalRate: string;
   summaryErrorSpectrum: string;
   summaryErrorSpectrumDepT: string;
-  summaryPhred: string;
+  summaryPhred: string | null;
   summaryGcContent: string;
   summaryReadPosition: string;
 }

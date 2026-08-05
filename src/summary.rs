@@ -359,14 +359,12 @@ impl PhredScoreSummary {
         let mut key_error_pos: HashMap<(u8, u8), u64> = HashMap::new();
         for (value, info_list) in value_map {
             for info in info_list {
-                if info.qual.is_empty() {
-                    continue;
-                }
+                let Some(qual) = &info.qual else { continue };
                 for p in 0..value_size as usize {
                     let bit_shift = 2 * (value_size as usize - 1 - p);
                     let value_base     = (value     >> bit_shift) & 0b11;
                     let consensus_base = (consensus >> bit_shift) & 0b11;
-                    let phred = info.qual[p].saturating_sub(33);
+                    let phred = qual[p].saturating_sub(33);
                     if value_base == consensus_base {
                         *key_correct_pos.entry((phred, p as u8)).or_insert(0) += 1;
                     } else {
@@ -482,9 +480,6 @@ impl GCContentSummary {
         let mut key_error_pos: HashMap<(u8, u8), u64> = HashMap::new();
         for (value, info_list) in value_map {
             for info in info_list {
-                if info.qual.is_empty() {
-                    continue;
-                }
                 for p in 0..value_size as usize {
                     let bit_shift = 2 * (value_size as usize - 1 - p);
                     let value_base     = (value     >> bit_shift) & 0b11;
@@ -627,9 +622,6 @@ impl ReadPositionSummary {
         let mut error_from_end: HashMap<u32, u64> = HashMap::new();
         for (value, info_list) in value_map {
             for info in info_list {
-                if info.qual.is_empty() {
-                    continue;
-                }
                 for p in 0..value_size as usize {
                     let bit_shift = 2 * (value_size as usize - 1 - p);
                     let value_base     = (value     >> bit_shift) & 0b11;

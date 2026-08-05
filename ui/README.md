@@ -1,15 +1,15 @@
 # Skiver App
 
-On WSL,
+On WSL/Linux, run the app with
 
 ```
-cd /home/zhenhao/skiver/ui
+cd ui
 npm run tauri dev
 ```
 
 Build the app with
 
 ```
-cd /home/zhenhao/skiver/ui
+cd ui
 npm run tauri build
 ```

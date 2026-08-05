@@ -130,7 +130,6 @@ pub fn estimate_c_from_raw_files(files: &[&str]) -> (usize, u64) {
     const GZ_FACTOR: u64 = 4; // Estimated decompressed size is 4x compressed size for .gz files
 
     let total_size: u64 = files.iter()
-        .filter(|f| is_fastx_file(f))
         .map(|f| {
             let size = std::fs::metadata(f).map(|m| m.len()).unwrap_or(0);
             if f.to_lowercase().ends_with(".gz") { size * GZ_FACTOR } else { size }

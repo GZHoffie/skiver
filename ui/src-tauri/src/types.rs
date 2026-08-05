@@ -29,6 +29,11 @@ pub struct AnalyzeParams {
     pub reference: Option<String>,
 }
 
+#[derive(Serialize, Clone, Debug)]
+pub struct AnalyzeResult {
+    pub has_qscore_data: bool,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct LogEvent {
     pub stream: String,

@@ -32,9 +32,9 @@ pub type Kmer = u64;
 /// Metadata for a single observation of a (key, value) k,v-mer.
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct ValueInfo {
-    /// Phred+33-encoded quality scores for the value bases (length == value_size),
-    /// or empty when the source had no quality data (FASTA).
-    pub qual: Vec<u8>,
+    /// Phred+33-encoded quality scores for the value bases (length == value_size).
+    /// `None` when the source had no quality data (FASTA).
+    pub qual: Option<Vec<u8>>,
     /// 0-based index of the value's first base in the (trimmed) read.
     pub start_index: u32,
     /// Distance from the start of the value to the end of the read.
@@ -42,7 +42,6 @@ pub struct ValueInfo {
     /// `true` if the k,v-mer came from the forward strand, `false` for RC.
     pub is_forward: bool,
     /// GC content of the (trimmed) read this k,v-mer came from, rounded to nearest integer (%).
-    /// 0 when the source had no quality data (FASTA).
     pub gc_content: u8,
 }
 

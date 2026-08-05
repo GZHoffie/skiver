@@ -192,6 +192,12 @@ export default function App() {
                 key={pt}
                 className={plotTab === pt ? "active" : ""}
                 onClick={() => setPlotTab(pt)}
+                disabled={pt === "Q-Score" && !csvPaths.summaryPhred}
+                title={
+                  pt === "Q-Score" && !csvPaths.summaryPhred
+                    ? "No Q-score calibration data was produced"
+                    : undefined
+                }
               >
                 {pt}
               </button>
