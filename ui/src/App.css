@@ -178,7 +178,7 @@
   transition: all 0.15s;
 }
 
-.plot-tab-bar button:hover {
+.plot-tab-bar button:hover:not(:disabled) {
   border-color: #2d6fd4;
   color: var(--accent);
   background: var(--accent-dim);

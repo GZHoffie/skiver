@@ -1,11 +1,22 @@
 use tauri::Emitter;
-use tauri_plugin_shell::ShellExt;
 use tauri_plugin_shell::process::CommandEvent;
+use tauri_plugin_shell::ShellExt;
 
-use crate::types::{AnalyzeParams, LogEvent};
+use std::path::Path;
+
+use crate::types::{AnalyzeParams, AnalyzeResult, LogEvent};
+
+fn csv_has_data_rows(path: &Path) -> bool {
+    std::fs::read_to_string(path)
+        .map(|csv| csv.lines().skip(1).any(|line| !line.trim().is_empty()))
+        .unwrap_or(false)
+}
 
 #[tauri::command]
-pub async fn run_analyze(app: tauri::AppHandle, params: AnalyzeParams) -> Result<(), String> {
+pub async fn run_analyze(
+    app: tauri::AppHandle,
+    params: AnalyzeParams,
+) -> Result<AnalyzeResult, String> {
     let mut args: Vec<String> = vec!["analyze".into()];
 
     for f in &params.input_files {
@@ -42,11 +53,15 @@ pub async fn run_analyze(app: tauri::AppHandle, params: AnalyzeParams) -> Result
         args.push("--use-all".into());
     }
 
-    app.emit("skiver-log", LogEvent {
-        stream: "stdout".into(),
-        line: format!("$ skiver {}", args.join(" ")),
-        exit_code: None,
-    }).ok();
+    app.emit(
+        "skiver-log",
+        LogEvent {
+            stream: "stdout".into(),
+            line: format!("$ skiver {}", args.join(" ")),
+            exit_code: None,
+        },
+    )
+    .ok();
 
     let (mut rx, _child) = app
         .shell()
@@ -82,11 +97,36 @@ pub async fn run_analyze(app: tauri::AppHandle, params: AnalyzeParams) -> Result
                 if code != Some(0) {
                     return Err(format!("skiver analyze exited with code {:?}", code));
                 }
-                return Ok(());
+                let phred_path = format!("{}.summary_phred.csv", params.output_prefix);
+                return Ok(AnalyzeResult {
+                    has_qscore_data: csv_has_data_rows(Path::new(&phred_path)),
+                });
             }
             _ => continue,
         };
         app.emit("skiver-log", log).ok();
     }
-    Ok(())
+    Err("skiver analyze ended without reporting an exit status".into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::csv_has_data_rows;
+    use std::fs;
+
+    #[test]
+    fn detects_optional_csv_data_rows() {
+        let dir = std::env::temp_dir();
+        let empty_path = dir.join(format!("skiver-empty-phred-{}.csv", std::process::id()));
+        let data_path = dir.join(format!("skiver-data-phred-{}.csv", std::process::id()));
+
+        fs::write(&empty_path, "qscore,num_correct,num_error\n").unwrap();
+        fs::write(&data_path, "qscore,num_correct,num_error\n20,100,1\n").unwrap();
+
+        assert!(!csv_has_data_rows(&empty_path));
+        assert!(csv_has_data_rows(&data_path));
+
+        fs::remove_file(empty_path).unwrap();
+        fs::remove_file(data_path).unwrap();
+    }
 }

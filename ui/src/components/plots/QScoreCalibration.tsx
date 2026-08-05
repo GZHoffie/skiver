@@ -13,7 +13,7 @@ interface PhredRow {
 }
 
 interface Props {
-  phredPath: string;
+  phredPath: string | null;
 }
 
 const MIN_COVERAGE = 100;
@@ -22,6 +22,13 @@ export function QScoreCalibration({ phredPath }: Props) {
   const { data: rows, loading } = useCSVData<PhredRow>(phredPath);
   const [logScale, setLogScale] = useState(true);
 
+  if (!phredPath) {
+    return (
+      <div className="plot-loading">
+        No Q-score calibration data was produced. FASTA input does not contain quality scores.
+      </div>
+    );
+  }
   if (loading) return <div className="plot-loading">Loading…</div>;
   if (!rows) return null;
 

@@ -13,6 +13,8 @@ We provide several ways of installing skiver CLI.
 
 ### Conda install
 
+![](https://anaconda.org/bioconda/skiver/badges/version.svg) ![](https://anaconda.org/bioconda/skiver/badges/platforms.svg) ![](https://anaconda.org/bioconda/skiver/badges/downloads.svg)
+
 ```bash
 conda install -c bioconda skiver
 ```
