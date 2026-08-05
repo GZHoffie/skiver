@@ -55,7 +55,7 @@ pub struct SketchArgs {
 
 #[derive(Args, Default, Clone)]
 pub struct AnalyzeArgs {
-    #[clap(multiple=true, help_heading = "INPUT", help = "Exactly one kv-mer sketch (any file extension), or one or more FASTQ files; gzip optional.")]
+    #[clap(multiple=true, help_heading = "INPUT", help = "Exactly one kv-mer sketch (any file extension), or one or more FASTA/FASTQ files; gzip optional.")]
     pub files: Vec<String>,
 
     #[clap(short = 'k', default_value_t = 17, help_heading = "ALGORITHM", help ="Length of keys.")]

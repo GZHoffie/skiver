@@ -93,6 +93,9 @@ pub fn fmh_seeds_masked(
         return;
     }
 
+    let gc_count = string.iter().filter(|&&b| { let s = BYTE_TO_SEQ[b as usize]; s == 1 || s == 2 }).count();
+    let gc_content: u8 = if string.is_empty() { 0 } else { ((gc_count * 100 + string.len() / 2) / string.len()) as u8 };
+
     let mut rolling_key_f: MarkerBits = 0;
     let mut rolling_key_r: MarkerBits = 0;
     let mut rolling_value_f: MarkerBits = 0;
@@ -158,7 +161,7 @@ pub fn fmh_seeds_masked(
         if hash_f < threshold_marker {
             keys_vec.push(rolling_key_f as u64);
             values_vec.push(rolling_value_f as u64);
-            value_info_vec.push(ValueInfo { qual: vec![], start_index: (i - v + 1) as u32, dist_to_read_end: len as u32 - (i - v + 1) as u32, is_forward: true, gc_content: 0 });
+            value_info_vec.push(ValueInfo { qual: None, start_index: (i - v + 1) as u32, dist_to_read_end: len as u32 - (i - v + 1) as u32, is_forward: true, gc_content });
         }
 
         if bidirectional {
@@ -182,7 +185,7 @@ pub fn fmh_seeds_masked(
             if hash_r < threshold_marker {
                 keys_vec.push(rolling_key_r as u64);
                 values_vec.push(rolling_value_r as u64);
-                value_info_vec.push(ValueInfo { qual: vec![], start_index: (i - k + 1) as u32, dist_to_read_end: len as u32 - (i - k + 1) as u32, is_forward: false, gc_content: 0 });
+                value_info_vec.push(ValueInfo { qual: None, start_index: (i - k + 1) as u32, dist_to_read_end: len as u32 - (i - k + 1) as u32, is_forward: false, gc_content });
             }
         }
     }
@@ -272,7 +275,7 @@ pub fn fmh_seeds_masked_with_qual(
             keys_vec.push(rolling_key_f);
             values_vec.push(rolling_value_f);
             // Value covers read positions [i-v+1, i]; position 0 = i-v+1.
-            value_info_vec.push(ValueInfo { qual: qual[i - v + 1..=i].to_vec(), start_index: (i - v + 1) as u32, dist_to_read_end: len as u32 - (i - v + 1) as u32, is_forward: true, gc_content });
+            value_info_vec.push(ValueInfo { qual: Some(qual[i - v + 1..=i].to_vec()), start_index: (i - v + 1) as u32, dist_to_read_end: len as u32 - (i - v + 1) as u32, is_forward: true, gc_content });
         }
 
         if bidirectional {
@@ -294,7 +297,7 @@ pub fn fmh_seeds_masked_with_qual(
                 // RC value position p corresponds to forward read position (i-k-p).
                 // Quality string is in RC-value-position order: p=0 → qual[i-k].
                 let rc_qual: Vec<u8> = (0..v).map(|p| qual[i - k - p]).collect();
-                value_info_vec.push(ValueInfo { qual: rc_qual, start_index: (i - k + 1) as u32, dist_to_read_end: len as u32 - (i - k + 1) as u32, is_forward: false, gc_content });
+                value_info_vec.push(ValueInfo { qual: Some(rc_qual), start_index: (i - k + 1) as u32, dist_to_read_end: len as u32 - (i - k + 1) as u32, is_forward: false, gc_content });
             }
         }
     }
