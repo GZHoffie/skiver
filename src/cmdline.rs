@@ -42,8 +42,8 @@ pub struct SketchArgs {
     #[clap(short = 'b', default_value_t = 0, help_heading = "INPUT", help = "Number of bases to trim from the end of each read.")]
     pub trim_back: usize,
 
-    //#[clap(short, default_value_t = 4, help_heading = "ALGORITHM", help = "Number of threads.")]
-    //pub threads: usize,
+    #[clap(short = 't', long = "threads", default_value_t = 0, help_heading = "ALGORITHM", help = "Number of worker threads for FASTA/FASTQ processing. 0 uses all available CPUs.")]
+    pub threads: usize,
 
     #[clap(short, required = true, help_heading = "OUTPUT", help = "Output file.")]
     pub output_path: String,
@@ -97,8 +97,8 @@ pub struct AnalyzeArgs {
     #[clap(long, default_value_t = 2, help_heading = "ALGORITHM", help = "The number of smallest t values to ignore. This is due to the empirical observation that the error spectrum estimation can be inaccurate for small t values.")]
     pub ignore_smallest_t: usize,
 
-    //#[clap(short = 't', long = "threads", default_value_t = 4, help_heading = "ALGORITHM", help = "Number of threads.")]
-    //pub threads: usize,
+    #[clap(short = 't', long = "threads", default_value_t = 0, help_heading = "ALGORITHM", help = "Number of worker threads for FASTA/FASTQ processing. 0 uses all available CPUs.")]
+    pub threads: usize,
 
     #[clap(short = 'o', long = "output-prefix", required = true, help_heading = "OUTPUT", help = "Output prefix. Writes the report to <prefix>.*.csv.")]
     pub output_prefix: String,

@@ -71,8 +71,10 @@ pub fn sketch(args: SketchArgs) {
     info!("Processing query files...");
 
     let mut kvmer_set = KVmerSet::new(args.k, args.v, !args.forward_only);
+    let threads = if args.threads == 0 { std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1) } else { args.threads };
+    info!("Using {} FASTA/FASTQ worker thread(s).", threads);
     for file in &args.files {
-        kvmer_set.add_file_to_kvmer_set(file, c, args.trim_front, args.trim_back);
+        kvmer_set.add_file_to_kvmer_set_with_threads(file, c, args.trim_front, args.trim_back, threads);
     }
     info!("Finished processing query files.");
 

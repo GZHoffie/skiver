@@ -60,6 +60,10 @@ skiver analyze [sequence_file_1] [sequence_file_2] ... -r [reference_file] --use
 
 The input sequence files can be represented using regex. Gzipped files are also accepted.
 
+FASTA/FASTQ processing uses all available CPUs by default. Use `-t/--threads` to set a fixed worker count, or `-t 1` for the lowest-memory sequential path. See [the performance notes](docs/performance.md) for benchmark results and methodology.
+
+Gzip input uses COMBINE-lab's pure-Rust `rapidgzip-core` parallel decoder by default. To build without it, disable default features (and re-enable `bam` if needed): `cargo build --release --no-default-features` or `cargo build --release --no-default-features --features bam`.
+
 For the full set of available options, use the help function,
 
 

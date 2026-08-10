@@ -1,5 +1,7 @@
 use log::{info, warn, error};
 use needletail::parse_fastx_file;
+#[cfg(feature = "parallel-gzip")]
+use needletail::parse_fastx_reader;
 #[cfg(all(feature = "bam", not(target_os = "windows")))]
 use rust_htslib::{bam, bam::Read as BamRead};
 use serde::{Serialize, Deserialize};
@@ -80,6 +82,31 @@ impl KVmerSet {
         self.num_kvmers += key_vec.len() as u32;
     }
 
+    fn add_kv_qual_buffers(&mut self, key_vec: &mut Vec<u64>, value_vec: &mut Vec<u64>, info_vec: &mut Vec<ValueInfo>) {
+        debug_assert!(key_vec.len() == value_vec.len() && key_vec.len() == info_vec.len());
+        self.num_kvmers += key_vec.len() as u32;
+        for ((key, value), info) in key_vec.drain(..).zip(value_vec.drain(..)).zip(info_vec.drain(..)) {
+            self.key_value_qual_map
+                .entry(key).or_insert_with(HashMap::new)
+                .entry(value).or_insert_with(Vec::new)
+                .push(info);
+        }
+    }
+
+    fn merge(&mut self, other: KVmerSet) {
+        if self.key_value_qual_map.is_empty() && self.num_kvmers == 0 {
+            *self = other;
+            return;
+        }
+        self.num_kvmers += other.num_kvmers;
+        for (key, value_map) in other.key_value_qual_map {
+            let target = self.key_value_qual_map.entry(key).or_insert_with(HashMap::new);
+            for (value, info_list) in value_map {
+                target.entry(value).or_insert_with(Vec::new).extend(info_list);
+            }
+        }
+    }
+
 
     fn extract_markers_masked(&self, string: &[u8], key_vec: &mut Vec<u64>, value_vec: &mut Vec<u64>, c: usize, trim_front: usize, trim_back: usize, value_info_vec: &mut Vec<ValueInfo>) {
         let start = std::cmp::min(trim_front, string.len());
@@ -134,6 +161,18 @@ impl KVmerSet {
         trim_front: usize,
         trim_back: usize,
     ) {
+        let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1);
+        self.add_file_to_kvmer_set_with_threads(seq_file, c, trim_front, trim_back, threads);
+    }
+
+    pub fn add_file_to_kvmer_set_with_threads(
+        &mut self,
+        seq_file: &str,
+        c: usize,
+        trim_front: usize,
+        trim_back: usize,
+        threads: usize,
+    ) {
         let seq_file_clone = seq_file.to_string();
 
         #[cfg(all(feature = "bam", not(target_os = "windows")))]
@@ -171,31 +210,122 @@ impl KVmerSet {
         }
 
         {
+            #[cfg(feature = "parallel-gzip")]
+            let lower_path = seq_file_clone.to_lowercase();
+            #[cfg(feature = "parallel-gzip")]
+            let mut worker_count = threads.max(1);
+            #[cfg(not(feature = "parallel-gzip"))]
+            let worker_count = threads.max(1);
+            #[cfg(feature = "parallel-gzip")]
+            let (reader, gzip_threads) = if lower_path.ends_with(".gz") && threads > 1 {
+                let gzip_threads = (threads * 3 / 4).max(1).min(threads - 1);
+                worker_count = (threads - gzip_threads).max(1);
+                match rapidgzip_core::Decoder::builder().decoder_threads(gzip_threads).build() {
+                    Ok(decoder) => match decoder.open(&seq_file_clone) {
+                        Ok(reader) => (parse_fastx_reader(reader), Some(gzip_threads)),
+                        Err(e) => {
+                            warn!("Could not open {} with rapidgzip-core ({}); falling back to needletail's gzip decoder.", seq_file_clone, e);
+                            (parse_fastx_file(&seq_file_clone), None)
+                        }
+                    },
+                    Err(e) => {
+                        warn!("Could not configure rapidgzip-core ({}); falling back to needletail's gzip decoder.", e);
+                        (parse_fastx_file(&seq_file_clone), None)
+                    }
+                }
+            } else {
+                (parse_fastx_file(&seq_file_clone), None)
+            };
+            #[cfg(not(feature = "parallel-gzip"))]
             let reader = parse_fastx_file(&seq_file_clone);
             if !reader.is_ok() {
                 error!("{} is not a valid fasta/fastq file; skipping.", seq_file_clone);
                 return;
             }
             let mut reader = reader.unwrap();
-            while let Some(record) = reader.next() {
-                match record {
-                    Ok(record) => {
-                        let mut key_vec: Vec<u64> = Vec::new();
-                        let mut value_vec: Vec<u64> = Vec::new();
-                        if let Some(qual) = record.qual() {
-                            // FASTQ: record quality scores alongside k,v-mers.
-                            let mut info_vec: Vec<ValueInfo> = Vec::new();
-                            self.extract_markers_masked_with_qual(&record.seq(), qual, &mut key_vec, &mut value_vec, &mut info_vec, c, trim_front, trim_back);
-                            self.add_kv_qual_vector(&key_vec, &value_vec, &info_vec);
-                        } else {
-                            // FASTA: no quality scores; record position/strand but empty qual.
-                            let mut info_vec: Vec<ValueInfo> = Vec::new();
-                            self.extract_markers_masked(&record.seq(), &mut key_vec, &mut value_vec, c, trim_front, trim_back, &mut info_vec);
-                            self.add_kv_qual_vector(&key_vec, &value_vec, &info_vec);
+            if worker_count == 1 {
+                let mut key_vec = Vec::new();
+                let mut value_vec = Vec::new();
+                let mut info_vec = Vec::new();
+                while let Some(record) = reader.next() {
+                    match record {
+                        Ok(record) => {
+                            let seq = record.seq();
+                            if let Some(qual) = record.qual() {
+                                self.extract_markers_masked_with_qual(&seq, qual, &mut key_vec, &mut value_vec, &mut info_vec, c, trim_front, trim_back);
+                            } else {
+                                self.extract_markers_masked(&seq, &mut key_vec, &mut value_vec, c, trim_front, trim_back, &mut info_vec);
+                            }
+                            self.add_kv_qual_buffers(&mut key_vec, &mut value_vec, &mut info_vec);
+                        }
+                        Err(e) => warn!("Error reading record: {}", e),
+                    }
+                }
+                return;
+            }
+            let (sender, receiver) = crossbeam_channel::bounded::<Vec<(Vec<u8>, Option<Vec<u8>>)>>(worker_count * 2);
+            let key_size = self.key_size;
+            let value_size = self.value_size;
+            let bidirectional = self.bidirectional;
+            let (worker_sets, parse_failed) = std::thread::scope(|scope| {
+                let mut handles = Vec::with_capacity(worker_count);
+                for _ in 0..worker_count {
+                    let receiver = receiver.clone();
+                    handles.push(scope.spawn(move || {
+                        let mut local = KVmerSet::new(key_size, value_size, bidirectional);
+                        let mut key_vec = Vec::new();
+                        let mut value_vec = Vec::new();
+                        let mut info_vec = Vec::new();
+                        for batch in receiver {
+                            for (seq, qual) in batch {
+                                key_vec.clear();
+                                value_vec.clear();
+                                info_vec.clear();
+                                if let Some(qual) = qual {
+                                    local.extract_markers_masked_with_qual(&seq, &qual, &mut key_vec, &mut value_vec, &mut info_vec, c, trim_front, trim_back);
+                                } else {
+                                    local.extract_markers_masked(&seq, &mut key_vec, &mut value_vec, c, trim_front, trim_back, &mut info_vec);
+                                }
+                                local.add_kv_qual_buffers(&mut key_vec, &mut value_vec, &mut info_vec);
+                            }
+                        }
+                        local
+                    }));
+                }
+                drop(receiver);
+
+                let mut batch = Vec::with_capacity(1024);
+                let mut parse_failed = false;
+                while let Some(record) = reader.next() {
+                    match record {
+                        Ok(record) => {
+                            batch.push((record.seq().into_owned(), record.qual().map(|qual| qual.to_vec())));
+                            if batch.len() == 1024 {
+                                sender.send(std::mem::replace(&mut batch, Vec::with_capacity(1024))).unwrap();
+                            }
+                        }
+                        Err(e) => {
+                            warn!("Error reading record: {}", e);
+                            parse_failed = true;
                         }
                     }
-                    Err(e) => warn!("Error reading record: {}", e),
                 }
+                if !batch.is_empty() {
+                    sender.send(batch).unwrap();
+                }
+                drop(sender);
+                (handles.into_iter().map(|handle| handle.join().unwrap()).collect::<Vec<_>>(), parse_failed)
+            });
+            if parse_failed {
+                error!("Parsing failed for {}; discarding partial results.", seq_file_clone);
+                return;
+            }
+            #[cfg(feature = "parallel-gzip")]
+            if let Some(gzip_threads) = gzip_threads {
+                info!("Parallel gzip decoding completed using up to {} thread(s).", gzip_threads);
+            }
+            for worker_set in worker_sets {
+                self.merge(worker_set);
             }
         }
     }
@@ -244,7 +374,10 @@ impl KVmerSet {
         let mut gc_content_summary = GCContentSummary::new();
         let mut read_position_summary = ReadPositionSummary::new();
 
-        for (key, value_map) in &self.key_value_qual_map {
+        let mut sorted_keys: Vec<u64> = self.key_value_qual_map.keys().copied().collect();
+        sorted_keys.sort_unstable();
+        for key in sorted_keys {
+            let value_map = &self.key_value_qual_map[&key];
             // find the consensus (most frequent) value
             let mut max_count = 0;
             let mut sum_count = 0;
@@ -252,7 +385,7 @@ impl KVmerSet {
             for (value, info_list) in value_map {
                 let count = info_list.len() as u32;
                 sum_count += count;
-                if count > max_count {
+                if count > max_count || (count == max_count && *value < max_value) {
                     max_count = count;
                     max_value = *value;
                 }
@@ -263,8 +396,8 @@ impl KVmerSet {
                 continue;
             }
 
-            if kvmer_summary.update(*key, max_value, self.key_size, self.value_size, self.bidirectional, value_map) {
-                keys.push(*key);
+            if kvmer_summary.update(key, max_value, self.key_size, self.value_size, self.bidirectional, value_map) {
+                keys.push(key);
                 consensus_values.push(max_value);
                 error_spectrum.update(kvmer_summary.error_counts_per_key.last().unwrap().clone(), kvmer_summary.forward_error_counts_per_key.last().unwrap().clone());
                 phred_summary.update(max_value, self.value_size, value_map);
@@ -299,7 +432,10 @@ impl KVmerSet {
         // for debugging: the number of k-mers that the read set shares with the reference
         let mut shared_kmer_count: u32 = 0;
 
-        for (key, ref_value_map) in &reference.key_value_qual_map {
+        let mut sorted_keys: Vec<u64> = reference.key_value_qual_map.keys().copied().collect();
+        sorted_keys.sort_unstable();
+        for key in sorted_keys {
+            let ref_value_map = &reference.key_value_qual_map[&key];
 
             if !self.key_value_qual_map.contains_key(&key) {
                 continue;
@@ -323,8 +459,8 @@ impl KVmerSet {
                 continue;
             }
 
-            if kvmer_summary.update(*key, consensus_value, self.key_size, self.value_size, self.bidirectional, value_map) {
-                keys.push(*key);
+            if kvmer_summary.update(key, consensus_value, self.key_size, self.value_size, self.bidirectional, value_map) {
+                keys.push(key);
                 consensus_values.push(consensus_value);
                 error_spectrum.update(kvmer_summary.error_counts_per_key.last().unwrap().clone(), kvmer_summary.forward_error_counts_per_key.last().unwrap().clone());
                 phred_summary.update(consensus_value, self.value_size, value_map);
