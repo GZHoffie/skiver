@@ -7,11 +7,11 @@ Download the `AppImage` file from the [latest release of skiver](https://github.
 
 ```bash
 # Replace this with the link to the latest release
-wget https://github.com/GZHoffie/skiver/releases/download/v0.3.1/Skiver_0.3.1_amd64.AppImage
-chmod a+x ./Skiver_0.3.1_amd64.AppImage
+wget https://github.com/GZHoffie/skiver/releases/download/v0.3.2/Skiver_0.3.2_amd64.AppImage
+chmod a+x ./Skiver_0.3.2_amd64.AppImage
 
 # Run with the following command
-./Skiver_0.3.1_amd64.AppImage
+./Skiver_0.3.2_amd64.AppImage
 ```
 
 ### Troubleshoot
@@ -19,7 +19,7 @@ chmod a+x ./Skiver_0.3.1_amd64.AppImage
 - **Wayland issue**: If `AppImage` fails to launch on a  system based on Wayland Display Server Protocol (instead of X11), try:
 
   ```
-  LD_PRELOAD=/usr/lib/libwayland-client.so ./Skiver_0.3.1_amd64.appimage
+  LD_PRELOAD=/usr/lib/libwayland-client.so ./Skiver_0.3.2_amd64.AppImage
   ```
 
 

@@ -172,8 +172,10 @@ pub fn analyze(args: AnalyzeArgs) {
 
     // Read query files
     info!("Processing query files...");
+    let threads = if args.threads == 0 { std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1) } else { args.threads };
+    info!("Using {} FASTA/FASTQ worker thread(s).", threads);
     for file_str in &raw_files {
-        kvmer_set.add_file_to_kvmer_set(file_str, c, args.trim_front, args.trim_back);
+        kvmer_set.add_file_to_kvmer_set_with_threads(file_str, c, args.trim_front, args.trim_back, threads);
     }
     info!("Finished processing query files.");
 
@@ -188,7 +190,7 @@ pub fn analyze(args: AnalyzeArgs) {
         let lower_bound = args.lower_bound.unwrap_or(0);
 
         let mut reference_kvmer_set = KVmerSet::new(args.k, args.v, true);
-        reference_kvmer_set.add_file_to_kvmer_set(reference, c, args.trim_front, args.trim_back);
+        reference_kvmer_set.add_file_to_kvmer_set_with_threads(reference, c, args.trim_front, args.trim_back, threads);
         info!("Loaded reference file: {}", reference);
 
         stats = kvmer_set.get_stats_with_reference(lower_bound, &reference_kvmer_set);

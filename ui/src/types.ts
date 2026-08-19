@@ -8,6 +8,7 @@ export interface SketchParams {
   c: number | null;
   trim_front: number;
   trim_back: number;
+  threads: number;
   forward_only: boolean;
 }
 
@@ -22,6 +23,7 @@ export interface AnalyzeParams {
   outlier_threshold: number;
   ignore_largest_t: number;
   ignore_smallest_t: number;
+  threads: number;
   hazard_model: string;
   num_experiments: number;
   reference: string | null;

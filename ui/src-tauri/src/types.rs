@@ -9,6 +9,7 @@ pub struct SketchParams {
     pub c: Option<usize>,
     pub trim_front: usize,
     pub trim_back: usize,
+    pub threads: usize,
     pub forward_only: bool,
 }
 
@@ -24,6 +25,7 @@ pub struct AnalyzeParams {
     pub outlier_threshold: f64,
     pub ignore_largest_t: usize,
     pub ignore_smallest_t: usize,
+    pub threads: usize,
     pub hazard_model: String,
     pub num_experiments: u32,
     pub reference: Option<String>,
