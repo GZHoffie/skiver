@@ -8,9 +8,11 @@ use serde::{Serialize, Deserialize};
 //use rayon::prelude::*;
 
 use std::fs::File;
-use std::io::{BufWriter, BufReader};
+use std::io::{BufWriter, BufReader, Read, Seek};
+use std::sync::{Arc, Mutex};
 
 use std::collections::HashMap;
+use seq_io_parallel::{MinimalRefRecord, ParallelProcessor, ParallelReader};
 
 use crate::{seeding::*, types::*};
 use crate::summary::{KVmerSummary, ErrorSpectrumSummary, GCContentSummary, PhredScoreSummary, ReadPositionSummary};
@@ -26,6 +28,52 @@ pub struct KVmerStats {
     pub phred_summary: PhredScoreSummary,
     pub gc_content_summary: GCContentSummary,
     pub read_position_summary: ReadPositionSummary,
+}
+
+struct SeqIoProcessor {
+    local: KVmerSet,
+    key_vec: Vec<u64>,
+    value_vec: Vec<u64>,
+    info_vec: Vec<ValueInfo>,
+    completed: Arc<Mutex<Vec<KVmerSet>>>,
+    c: usize,
+    trim_front: usize,
+    trim_back: usize,
+}
+
+impl Clone for SeqIoProcessor {
+    fn clone(&self) -> Self {
+        Self {
+            local: KVmerSet::new(self.local.key_size, self.local.value_size, self.local.bidirectional),
+            key_vec: Vec::new(),
+            value_vec: Vec::new(),
+            info_vec: Vec::new(),
+            completed: self.completed.clone(),
+            c: self.c,
+            trim_front: self.trim_front,
+            trim_back: self.trim_back,
+        }
+    }
+}
+
+impl ParallelProcessor for SeqIoProcessor {
+    fn process_record<'a, R: MinimalRefRecord<'a>>(&mut self, record: R) -> anyhow::Result<()> {
+        let seq = record.ref_full_seq();
+        let qual = record.ref_qual();
+        if qual.is_empty() {
+            self.local.extract_markers_masked(&seq, &mut self.key_vec, &mut self.value_vec, self.c, self.trim_front, self.trim_back, &mut self.info_vec);
+        } else {
+            self.local.extract_markers_masked_with_qual(&seq, qual, &mut self.key_vec, &mut self.value_vec, &mut self.info_vec, self.c, self.trim_front, self.trim_back);
+        }
+        self.local.add_kv_qual_buffers(&mut self.key_vec, &mut self.value_vec, &mut self.info_vec);
+        Ok(())
+    }
+
+    fn on_thread_complete(&mut self) -> anyhow::Result<()> {
+        let replacement = KVmerSet::new(self.local.key_size, self.local.value_size, self.local.bidirectional);
+        self.completed.lock().unwrap().push(std::mem::replace(&mut self.local, replacement));
+        Ok(())
+    }
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
@@ -165,6 +213,44 @@ impl KVmerSet {
         self.add_file_to_kvmer_set_with_threads(seq_file, c, trim_front, trim_back, threads);
     }
 
+    fn add_uncompressed_fastx_with_threads(
+        &mut self,
+        seq_file: &str,
+        c: usize,
+        trim_front: usize,
+        trim_back: usize,
+        threads: usize,
+    ) -> anyhow::Result<()> {
+        let mut file = File::open(seq_file)?;
+        let mut first_byte = [0u8; 1];
+        file.read_exact(&mut first_byte)?;
+        file.seek(std::io::SeekFrom::Start(0))?;
+
+        let completed = Arc::new(Mutex::new(Vec::new()));
+        let processor = SeqIoProcessor {
+            local: KVmerSet::new(self.key_size, self.value_size, self.bidirectional),
+            key_vec: Vec::new(),
+            value_vec: Vec::new(),
+            info_vec: Vec::new(),
+            completed: completed.clone(),
+            c,
+            trim_front,
+            trim_back,
+        };
+
+        match first_byte[0] {
+            b'@' => seq_io::fastq::Reader::new(file).process_parallel(processor, threads.max(1))?,
+            b'>' => seq_io::fasta::Reader::new(file).process_parallel(processor, threads.max(1))?,
+            _ => anyhow::bail!("input does not begin with a FASTA or FASTQ record"),
+        }
+
+        let worker_sets = Arc::try_unwrap(completed).unwrap().into_inner().unwrap();
+        for worker_set in worker_sets {
+            self.merge(worker_set);
+        }
+        Ok(())
+    }
+
     pub fn add_file_to_kvmer_set_with_threads(
         &mut self,
         seq_file: &str,
@@ -206,6 +292,13 @@ impl KVmerSet {
         #[cfg(any(not(feature = "bam"), target_os = "windows"))]
         if seq_file_clone.ends_with(".bam") || seq_file_clone.ends_with(".sam") {
             error!("BAM/SAM support is not enabled in this build; skipping {}.", seq_file_clone);
+            return;
+        }
+
+        if !seq_file_clone.to_lowercase().ends_with(".gz") {
+            if let Err(e) = self.add_uncompressed_fastx_with_threads(&seq_file_clone, c, trim_front, trim_back, threads) {
+                error!("{} is not a valid fasta/fastq file (Error: {}); skipping.", seq_file_clone, e);
+            }
             return;
         }
 

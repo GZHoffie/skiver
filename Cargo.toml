@@ -18,6 +18,9 @@ clap = { version = "3", features = ["derive"] }
 bincode = "1"
 serde = { version = "1", features = ["derive"] }
 crossbeam-channel = "0.5.15"
+seq_io = "0.3.4"
+seq_io_parallel = "0.2.1"
+anyhow = "1"
 rand = "0.9.2"
 csv = "1"
 kuva = { version = "0.4", features = ["pdf"] }
