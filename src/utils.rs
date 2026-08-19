@@ -1,6 +1,9 @@
 use crate::types::*;
 
+use flate2::read::MultiGzDecoder;
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::{Read, Seek, SeekFrom};
 
 
 /**
@@ -115,26 +118,61 @@ pub fn is_fastx_file(file_path: &str) -> bool {
     fastx_extensions.iter().any(|ext| lower_path.ends_with(ext))
 }
 
+fn fastx_size_multiplier(file_path: &str) -> u64 {
+    const GZIP_MAGIC: [u8; 2] = [0x1f, 0x8b];
+
+    let mut file = match File::open(file_path) {
+        Ok(file) => file,
+        Err(_) => return 1,
+    };
+    let mut first_two_bytes = [0u8; 2];
+    if file.read_exact(&mut first_two_bytes).is_err() {
+        return 1;
+    }
+
+    let is_gzip = first_two_bytes == GZIP_MAGIC;
+    let first_fastx_byte = if is_gzip {
+        if file.seek(SeekFrom::Start(0)).is_err() {
+            return 1;
+        }
+        let mut decoder = MultiGzDecoder::new(file);
+        let mut first_byte = [0u8; 1];
+        if decoder.read_exact(&mut first_byte).is_err() {
+            return 1;
+        }
+        first_byte[0]
+    } else {
+        first_two_bytes[0]
+    };
+
+    match (first_fastx_byte, is_gzip) {
+        (b'@', false) => 1, // FASTQ
+        (b'@', true) => 4,  // FASTQ.GZ
+        (b'>', false) => 2, // FASTA
+        (b'>', true) => 8,  // FASTA.GZ
+        _ => 1,
+    }
+}
+
 /**
  * Estimate a suitable subsampling rate `-c` from raw sequencing input files.
- * For .gz files, the decompressed size is estimated as 4x the compressed size.
- * Returns ceiling(total_estimated_size / 10G) * 1000, with a minimum of 1000.
- * 
- * This is chosen so that the number of sketched (k,v)-mers is around 10M, for 
+ * File types are detected from their contents rather than their extensions.
+ * Disk sizes are weighted by 1x for FASTQ, 4x for gzipped FASTQ, 2x for
+ * FASTA, and 8x for gzipped FASTA.
+ * Returns ceiling(total_weighted_size / 10 GiB * 1000).
+ *
+ * This is chosen so that the number of sketched (k,v)-mers is around 10M, for
  * efficient loading and in-memory processing.
- * 
- * Returns (used_c, total_estimated_size).
+ *
+ * Returns (used_c, total_weighted_size).
  */
 pub fn estimate_c_from_raw_files(files: &[&str]) -> (usize, u64) {
     const TEN_GB: u64 = 10 * 1024 * 1024 * 1024;
-    const GZ_FACTOR: u64 = 4; // Estimated decompressed size is 4x compressed size for .gz files
 
-    let total_size: u64 = files.iter()
-        .map(|f| {
-            let size = std::fs::metadata(f).map(|m| m.len()).unwrap_or(0);
-            if f.to_lowercase().ends_with(".gz") { size * GZ_FACTOR } else { size }
-        })
-        .sum();
+    let total_size = files.iter().fold(0u64, |total, file_path| {
+        let size = std::fs::metadata(file_path).map(|metadata| metadata.len()).unwrap_or(0);
+        total.saturating_add(size.saturating_mul(fastx_size_multiplier(file_path)))
+    });
 
     if total_size == 0 {
         return (1000, 0);

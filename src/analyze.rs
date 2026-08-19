@@ -165,7 +165,7 @@ pub fn analyze(args: AnalyzeArgs) {
     let c = args.c.unwrap_or_else(|| {
         let raw_refs: Vec<&str> = raw_files.iter().map(|s| s.as_str()).collect();
         let (auto_c, est_file_size) = estimate_c_from_raw_files(&raw_refs);
-        info!("Total estimated input sequence file size (decompressed): {:.2} GB", est_file_size as f64 / (1024.0 * 1024.0 * 1024.0));
+        info!("Total weighted input sequence file size: {:.2} GB", est_file_size as f64 / (1024.0 * 1024.0 * 1024.0));
         info!("Auto-determined subsampling rate: -c {}", auto_c);
         auto_c
     });

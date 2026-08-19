@@ -33,7 +33,7 @@ pub struct SketchArgs {
     #[clap(short, default_value_t = 17, help_heading = "ALGORITHM", help ="Length of values.")]
     pub v: u8,
 
-    #[clap(short, help_heading = "ALGORITHM", help = "Subsampling rate. If not set, automatically determined as ceiling(total_input_size / 16G) * 1000 (decompressed size estimated as 4x for .gz files).")]
+    #[clap(short, help_heading = "ALGORITHM", help = "Subsampling rate. If not set, automatically determined as ceiling(weighted_disk_usage / 10 GiB * 1000), using 1x FASTQ, 4x gzipped FASTQ, 2x FASTA, and 8x gzipped FASTA. File types are detected from their contents.")]
     pub c: Option<usize>,
 
     #[clap(short = 'f', default_value_t = 0, help_heading = "INPUT", help = "Number of bases to trim from the start of each read.")]
@@ -64,7 +64,7 @@ pub struct AnalyzeArgs {
     #[clap(short = 'v', default_value_t = 17, help_heading = "ALGORITHM", help ="Length of values.")]
     pub v: u8,
 
-    #[clap(short = 'c', help_heading = "ALGORITHM", help = "Subsampling rate. If not set, automatically determined as ceiling(total_input_size / 10G) * 1000 (decompressed size estimated as 4x for .gz files).")]
+    #[clap(short = 'c', help_heading = "ALGORITHM", help = "Subsampling rate. If not set, automatically determined as ceiling(weighted_disk_usage / 10 GiB * 1000), using 1x FASTQ, 4x gzipped FASTQ, 2x FASTA, and 8x gzipped FASTA. File types are detected from their contents.")]
     pub c: Option<usize>,
 
     #[clap(short = 'l', long = "lower-bound", help_heading = "ALGORITHM", help = "Lower bound for the number of times the consensus appears in the read for it to be considered in the profiling. Default: 0 when the reference ('-r') is provided, 10 otherwise.")]

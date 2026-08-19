@@ -1511,6 +1511,7 @@ dependencies = [
  "clap",
  "crossbeam-channel",
  "csv",
+ "flate2",
  "glob",
  "hts-sys",
  "kuva",
