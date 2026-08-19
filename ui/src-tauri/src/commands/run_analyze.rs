@@ -34,6 +34,7 @@ pub async fn run_analyze(
         "--ignore-smallest-t".into(),
         params.ignore_smallest_t.to_string(),
     ]);
+    args.extend(["--threads".into(), params.threads.to_string()]);
     args.extend(["--hazard-model".into(), params.hazard_model.clone()]);
     args.extend([
         "--num-experiments".into(),

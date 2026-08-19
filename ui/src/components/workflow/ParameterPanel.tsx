@@ -178,6 +178,13 @@ export function ParameterPanel({
             onChange={(v) => setSketch("c", v)}
             min={1} placeholder="auto" disabled={disabled}
           />
+          <NumField
+            label="Worker threads"
+            description="Number of worker threads for FASTA/FASTQ processing. Set to 0 to use all available CPUs."
+            value={sketch.threads}
+            onChange={(v) => { setSketch("threads", v); setAnalyze("threads", v); }}
+            min={0} disabled={disabled}
+          />
           <CheckField
             label="Use only the forward strand"
             description="Sketch only the forward strand of each read, not their reverse complements."

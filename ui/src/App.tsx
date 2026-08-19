@@ -25,6 +25,7 @@ const DEFAULT_SKETCH: SketchParams = {
   c: null,
   trim_front: 0,
   trim_back: 0,
+  threads: 0,
   forward_only: false,
 };
 
@@ -39,6 +40,7 @@ const DEFAULT_ANALYZE: AnalyzeParams = {
   outlier_threshold: 1e-12,
   ignore_largest_t: 2,
   ignore_smallest_t: 2,
+  threads: 0,
   hazard_model: "weibull",
   num_experiments: 100,
   reference: null,

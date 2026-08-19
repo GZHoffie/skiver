@@ -16,6 +16,7 @@ pub async fn run_sketch(app: tauri::AppHandle, params: SketchParams) -> Result<(
     args.extend(["-o".into(), params.output_path.clone()]);
     args.extend(["-f".into(), params.trim_front.to_string()]);
     args.extend(["-b".into(), params.trim_back.to_string()]);
+    args.extend(["--threads".into(), params.threads.to_string()]);
     if let Some(c) = params.c {
         args.extend(["-c".into(), c.to_string()]);
     }
